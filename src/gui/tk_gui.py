@@ -1,0 +1,1541 @@
+"""
+This is the tkinter GUI for the real-time detection algorithm.
+04_10_2022
+"""
+
+__author__ = ['Zhouqiao Zhao', 'Jiahe Cao']
+
+import sys, os
+sys.path.append(os.getcwd() + '/src')
+from socket import *
+import tkinter as tk
+import PIL.Image, PIL.ImageTk
+from tkinter import filedialog as fd
+import time
+from datetime import datetime
+import threading
+from multiprocessing import Process, shared_memory, Event, Manager
+import numpy as np
+import cv2
+import queue
+import math
+import csv
+import json
+import pybgs as bgs
+
+from utilities import img_processor
+from streaming import rtsp_collector
+
+kernel = np.ones((1, 1), np.uint8)
+kernel2 = np.ones((2, 2), np.uint8)
+kernel3 = np.ones((3, 3), np.uint8)
+kernel4 = np.ones((4, 4), np.uint8)
+kernel5 = np.ones((5, 5), np.uint8)
+kernel6 = np.ones((6, 6), np.uint8)
+kernel7 = np.ones((7, 7), np.uint8)
+kernel8 = np.ones((8, 8), np.uint8)
+kernel9 = np.ones((9, 9), np.uint8)
+
+center_area = np.array([[[271,365]],[[544,551]],[[372,807]],[[103,609]]])
+
+upperright_tocenter_area = np.array([[[271,365]],[[390,490]],[[744,0]],[[590,0]]])
+upperright_backcenter_area = np.array([[[390,490]],[[544,551]],[[864,0]],[[744,0]]])
+
+lowerright_tocenter_area = np.array([[[544,551]],[[440, 695]],[[770,959]],[[959,907]]])
+lowerright_backcenter_area = np.array([[[440, 695]],[[770,959]],[[639,959]],[[372,807]]])
+
+upperleft_backcenter_area = np.array([[[271,365]],[[204,478]],[[0,320]],[[0,197]]])
+upperleft_tocenter_area = np.array([[[103,609]],[[204,478]],[[0,320]],[[0,456]]])
+
+lowerleft_backcenter_area = np.array([[[103,609]],[[225,685]],[[38,959]],[[0,859]]])
+lowerleft_tocenter_area = np.array([[[372,807]],[[225,685]],[[38,959]],[[219,959]]])
+
+old_bg_img = cv2.imread('./data/background/bg_history.png')
+mask_flow = cv2.imread('./data/masks/mask_flow.png', flags = cv2.IMREAD_GRAYSCALE)
+
+# All
+mask_all = cv2.imread('./data/masks/mask.png', flags = cv2.IMREAD_GRAYSCALE)
+_, mask_center = cv2.threshold(mask_all, 10, 255, cv2.THRESH_BINARY)
+
+# Center
+mask_center = cv2.imread('./data/masks/mask_center.png', flags = cv2.IMREAD_GRAYSCALE)
+_, mask_center = cv2.threshold(mask_center, 10, 255, cv2.THRESH_BINARY)
+
+# left down, from center to edge
+mask_ldf = cv2.imread('./data/masks/mask_ldf.png', flags = cv2.IMREAD_GRAYSCALE)
+_, mask_ldf = cv2.threshold(mask_ldf, 10, 255, cv2.THRESH_BINARY)
+
+# left down, towards center
+mask_ldt = cv2.imread('./data/masks/mask_ldt.png', flags = cv2.IMREAD_GRAYSCALE)
+_, mask_ldt = cv2.threshold(mask_ldt, 10, 255, cv2.THRESH_BINARY)
+
+# left down, towards center, left trun
+mask_ldt_l = cv2.imread('./data/masks/mask_ldt_left.png', flags = cv2.IMREAD_GRAYSCALE)
+_, mask_ldt_l = cv2.threshold(mask_ldt_l, 10, 255, cv2.THRESH_BINARY)
+
+# left upper, from center to edge
+mask_luf = cv2.imread('./data/masks/mask_luf.png', flags = cv2.IMREAD_GRAYSCALE)
+_, mask_luf = cv2.threshold(mask_luf, 10, 255, cv2.THRESH_BINARY)
+
+# left upper, towards center
+mask_lut = cv2.imread('./data/masks/mask_lut.png', flags = cv2.IMREAD_GRAYSCALE)
+_, mask_lut = cv2.threshold(mask_lut, 10, 255, cv2.THRESH_BINARY)
+
+# left upper, towards center, left trun
+mask_lut_l = cv2.imread('./data/masks/mask_lut_left.png', flags = cv2.IMREAD_GRAYSCALE)
+_, mask_lut_l = cv2.threshold(mask_lut_l, 10, 255, cv2.THRESH_BINARY)
+
+# right down, from center to edge
+mask_rdf = cv2.imread('./data/masks/mask_rdf.png', flags = cv2.IMREAD_GRAYSCALE)
+_, mask_rdf = cv2.threshold(mask_rdf, 10, 255, cv2.THRESH_BINARY)
+
+# right down, towards center
+mask_rdt = cv2.imread('./data/masks/mask_rdt.png', flags = cv2.IMREAD_GRAYSCALE)
+_, mask_rdt = cv2.threshold(mask_rdt, 10, 255, cv2.THRESH_BINARY)
+
+# right down, towards center, left trun
+mask_rdt_l = cv2.imread('./data/masks/mask_rdt_left.png', flags = cv2.IMREAD_GRAYSCALE)
+_, mask_rdt_l = cv2.threshold(mask_rdt_l, 10, 255, cv2.THRESH_BINARY)
+
+# right upper, from center to edge
+mask_ruf = cv2.imread('./data/masks/mask_ruf.png', flags = cv2.IMREAD_GRAYSCALE)
+_, mask_ruf = cv2.threshold(mask_ruf, 10, 255, cv2.THRESH_BINARY)
+# right upper, towards center
+mask_rut = cv2.imread('./data/masks/mask_rut.png', flags = cv2.IMREAD_GRAYSCALE)
+_, mask_rut = cv2.threshold(mask_rut, 10, 255, cv2.THRESH_BINARY)
+
+# right upper, towards center, left trun
+mask_rut_l = cv2.imread('./data/masks/mask_rut_left.png', flags = cv2.IMREAD_GRAYSCALE)
+_, mask_rut_l = cv2.threshold(mask_rut_l, 10, 255, cv2.THRESH_BINARY)
+
+mask_tuple = (mask_center, mask_ldf, mask_ldt, mask_ldt_l,
+              mask_luf, mask_lut, mask_lut_l,
+              mask_rdf, mask_rdt, mask_rdt_l,
+              mask_ruf, mask_rut, mask_rut_l)
+
+crop_position = [[370,100],[480,0],[480,0],[480,0],
+                [0,0],[100,0],[100,0],
+                [480,300],[480,400],[480,400],
+                [50,380],[0,300],[0,300]]
+
+area_threshold = [3000, 2895.0, 3000, 2106.357, 3000, 0, 
+                  3000, 3000, 1000, 1000, 3000, 3000, 3000]
+
+def LatLng_Dec2Rad(decNum):
+    if type(decNum) == float:
+        NumIntegral = int(decNum)
+        NumDecimal = decNum - NumIntegral
+
+        tmp = NumDecimal * 3600
+        degree = NumIntegral
+        minute = int(tmp // 60)
+        second = round(tmp - minute * 60, 2)
+        return degree, minute, second
+    if type(decNum) == tuple:
+        NumIntegral = int(decNum[0])
+        NumDecimal = decNum[0] - NumIntegral
+        tmp = NumDecimal * 3600
+        degree0 = NumIntegral
+        minute0 = int(tmp//60)
+        second0 = round(tmp - minute0*60,2)
+
+        NumIntegral = int(decNum[1])
+        NumDecimal = decNum[1] - NumIntegral
+        tmp = NumDecimal * 3600
+        degree1 = NumIntegral
+        minute1 = int(tmp//60)
+        second1= round(tmp - minute1*60,2)
+        return degree0, minute0, second0, degree1, minute1, second1
+
+def LatLng_Rad2Dec(d, m, s):
+    decNum = d + m / 60.0 + s / 3600.0
+    return decNum
+
+def divide_orientation(location):
+    if cv2.pointPolygonTest(center_area, location, False) > 0:
+        area = "center"
+        angle = False
+    elif cv2.pointPolygonTest(upperright_tocenter_area, location, False) > 0:
+        area = "upperright_tocenter"
+        angle = 123.69
+    elif cv2.pointPolygonTest(upperright_backcenter_area, location, False) > 0:
+        area = "upperright_backcenter"
+        angle = 307.51
+    elif cv2.pointPolygonTest(lowerright_tocenter_area, location, False) > 0:
+        area = "lowerright_tocenter"
+        angle = 217.66
+    elif cv2.pointPolygonTest(lowerright_backcenter_area, location, False) > 0:
+        area = "lowerright_backcenter"
+        angle = 46.85
+    elif cv2.pointPolygonTest(upperleft_tocenter_area, location, False) > 0:
+        area = "upperleft_tocenter"
+        angle = 46.85
+    elif cv2.pointPolygonTest(upperleft_backcenter_area, location, False) > 0:
+        area = "upperleft_backcenter"
+        angle = 217.66
+    elif cv2.pointPolygonTest(lowerleft_tocenter_area, location, False) > 0:
+        area = "lowerleft_tocenter"
+        angle = 307.51
+    elif cv2.pointPolygonTest(lowerleft_backcenter_area, location, False) > 0:
+        area = "lowerleft_backcenter"
+        angle = 123.69
+    else:
+        area = "not on street"
+        angle = False
+    return area, angle
+
+pixel_dis = math.sqrt((276 - 492) ** 2 + (402 - 560) ** 2)
+r = pixel_dis / (LatLng_Rad2Dec(33, 58, 32.98) - LatLng_Rad2Dec(33, 58, 31.89))
+
+def find_Lat_Lon(y, x):
+    # start_time = time.time()
+    alpha = 90 - 54.3221
+    w = 960
+    l = 960
+    centerx = 480
+    centery = 480
+    center_lat = LatLng_Rad2Dec(33, 58, 32.11) # camera lat
+    center_lon = -LatLng_Rad2Dec(117, 20, 22.77) # camera lon
+    alpha = math.radians(alpha)
+    lat_dis = abs(-math.tan(alpha) * x - y + centery + math.tan(alpha) * centerx) / math.sqrt(1 + math.tan(alpha) ** 2)
+    if lat_dis<1e-13:
+        lat_dis_t = 0
+    else:
+        lat_dis_t = lat_dis
+    lon_dis = math.sqrt((x-centerx)**2 + (y-centery)**2 - lat_dis_t**2)
+
+    angle = math.atan2(y-centery, x-centerx) + alpha
+    # print(radians(angle))
+    if 0 < angle and angle <= math.radians(90):
+        lat_dis = -1 * lat_dis
+        lon_dis = -1 * lon_dis
+        # print("--")
+    elif math.radians(90) < angle and angle <= math.radians(180):
+        lat_dis = -1 * lat_dis
+        # print("-+")
+    elif math.radians(-90)<angle and angle<=0:
+        lon_dis = -1 * lon_dis
+        # print("+-")
+    # else:
+        # print("++")
+    lat = lat_dis / r + center_lat
+    # print(LatLng_Dec2Rad(lat))
+    if center_lon<= 0:
+        lon = 2*math.asin(math.sin(lon_dis/(2*r)) / math.cos(math.radians(lat)) ) + center_lon
+    else:
+        lon = -2*math.asin(math.sin(lon_dis/(2*r)) / math.cos(math.radians(lat)) ) + center_lon
+    return lat, lon # west semisphere
+
+######################## BgOpticalFlowTrigger #########################
+class BgOpticalFlowTrigger():
+    def __init__(self, img, mask_flow, zone_mask_tuple):
+        self.mask_flow = mask_flow
+        self.zone_mask_tuple = zone_mask_tuple
+        img_prev_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        self.img_prev_gray = cv2.bitwise_and(img_prev_gray, img_prev_gray, mask = mask_flow)
+        self.flow_region_mean_prev = [0 for _ in range(13)]
+        
+    def update(self, img):
+        # Mask incoming frame
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        img_gray = cv2.bitwise_and(img_gray, img_gray, mask = self.mask_flow)
+        
+        # Calculate optical flow
+        flow = cv2.calcOpticalFlowFarneback(self.img_prev_gray, 
+                                            img_gray, 
+                                            None, 0.5, 3, 15, 3, 5, 1.2, 0)
+        
+        # Update previous frame
+        self.img_prev_gray = img_gray.copy()
+        
+        # Process magnitude of Optical flow
+        mag, _ = cv2.cartToPolar(flow[..., 0], flow[..., 1], angleInDegrees=True)
+        mag[np.isinf(mag)] = 0 # sometimes flow elements of 0 is reagarded as a number close to 0 but not equal to 0 by Python, then the cartToPolar function will get an inf value.
+        mag[np.isnan(mag)] = 0
+        self.mag = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX, dtype = cv2.CV_8U) #  mag shape: (960, 1280)
+        _, flow_contour = cv2.threshold(self.mag, 40, 255, cv2.THRESH_BINARY)
+        
+        ################### Morphlogical Transformation #######################
+        contours, _ = cv2.findContours(flow_contour, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        for contour in contours:
+            if cv2.contourArea(contour) < 100:
+                cv2.fillConvexPoly(flow_contour, contour, (0, 0, 0))
+                
+        flow_contour = cv2.morphologyEx(flow_contour, cv2.MORPH_OPEN, kernel, iterations=1)
+        flow_contour = cv2.dilate(flow_contour, kernel3, iterations=1)
+        
+        contours, _ = cv2.findContours(flow_contour, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        for contour in contours:
+            cv2.fillConvexPoly(flow_contour, contour, (255,255,255))
+            
+        contours, _ = cv2.findContours(flow_contour, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        for contour in contours:
+            if cv2.contourArea(contour) < 100:
+                cv2.fillConvexPoly(flow_contour, contour, (0,0,0))
+                
+        contours, _ = cv2.findContours(flow_contour, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        for contour in contours:
+            if cv2.contourArea(contour) < 100:
+                cv2.fillConvexPoly(flow_contour, contour, (0,0,0))
+        ################### Morphlogical Transformation #######################
+        
+        self.contours, _ = cv2.findContours(flow_contour, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        self.flow_contour = flow_contour.copy()
+        
+    def is_zone_triggered(self, zone_id):
+        cur_mask = self.zone_mask_tuple[zone_id].copy()
+        flow_region = cv2.bitwise_and(self.flow_contour, self.flow_contour, mask = cur_mask)
+        flow_region_contours, _ = cv2.findContours(flow_region, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        
+        total_area = 0
+        for contour in flow_region_contours:
+            total_area += cv2.contourArea(contour)
+            
+        flow_region_mean = 0
+        flow_region_mean = cv2.mean(cv2.bitwise_and(self.mag, self.mag, mask = flow_region),
+                                         mask = flow_region)[0]
+        
+        # if total_area > area_threshold[zone_id] and flow_region_mean > 10:
+        if total_area > area_threshold[zone_id] and flow_region_mean > 25 and flow_region_mean > (self.flow_region_mean_prev[zone_id]+3):
+            self.flow_region_mean_prev[zone_id] = flow_region_mean
+            return True
+        else:
+            self.flow_region_mean_prev[zone_id] = flow_region_mean
+            return False
+
+######################## ZoneInitializer #########################
+class ZoneInitializer():
+    def __init__(self, bg_img, zone_mask_tuple, zone_id):
+        # Parameters
+        self.zone_id = zone_id
+        self.score = 0
+        self.best_score = 0
+        self.best_var = np.inf
+        self.update_flag = False
+        self.init_flag = True
+
+        # Zone mask
+        cur_zone_mask = zone_mask_tuple[zone_id].copy()
+        _, self.zone_mask = cv2.threshold(cur_zone_mask, 10, 255, cv2.THRESH_BINARY)
+        self.eroded_mask = cv2.erode(self.zone_mask, kernel2, iterations = 1)
+        self.eroded_mask = self.eroded_mask[crop_position[self.zone_id][0] : crop_position[self.zone_id][0] + 480,
+                                            crop_position[self.zone_id][1] : crop_position[self.zone_id][1] + 480]
+        
+        # Init SIFT, GMM
+        self.sift = cv2.SIFT_create()
+        self.bgs_model = bgs.MixtureOfGaussianV2()
+
+        # Init Matcher
+        FLANN_INDEX_KDTREE = 0
+        indexParams = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+        searchParams = dict(checks = 50)
+        self.flann = cv2.FlannBasedMatcher(indexParams, searchParams)
+
+        # Load old bg for the matcher
+        old_bg = cv2.bitwise_and(bg_img, bg_img, mask = self.zone_mask) # template background
+        self.old_bg = old_bg[crop_position[self.zone_id][0] : crop_position[self.zone_id][0] + 480,
+                             crop_position[self.zone_id][1] : crop_position[self.zone_id][1] + 480]
+        _, self.des_prev_bg = self.sift.detectAndCompute(self.old_bg, mask = self.eroded_mask) # sift descriptor of the template background
+
+    def get_cur_bgs(self):
+        return self.bgs_model.getBackgroundModel()
+    
+    def get_bg(self):
+        if self.update_flag == False:
+            return self.get_cur_bgs()
+        else:
+            return self.bg_output
+
+    def bgs_model_update(self, frame):
+        update_region = cv2.bitwise_and(frame, frame, mask = self.zone_mask)
+        update_region = update_region[crop_position[self.zone_id][0] : crop_position[self.zone_id][0] + 480,
+                                      crop_position[self.zone_id][1] : crop_position[self.zone_id][1] + 480]
+        self.bgs_model.apply(update_region)
+        print('Zone', self.zone_id , 'GMM model updated')
+        self.init_flag = False
+
+    def compare_sift(self):
+        # Calculate sift descriptor from current bgs model
+        _, des_cur_bg = self.sift.detectAndCompute(self.get_cur_bgs(), mask = self.eroded_mask)
+        
+        # Calculate match score
+        matches = self.flann.knnMatch(self.des_prev_bg, des_cur_bg, k = 2)
+        matchNum = [m for (m, n) in matches if m.distance < 0.8 * n.distance]
+        self.score = len(matchNum) / len(matches)
+        
+        # Update bg_output
+        if self.score >= self.best_score:
+            print('Zone', self.zone_id , 'SIFT satisfied********')
+            self.best_score = self.score
+            self.bg_output = self.get_cur_bgs() # generated background
+            self.update_flag = True
+        
+        self.best_score = self.best_score * 0.9999
+    
+    def compare_var(self):
+        img_dif = cv2.absdiff(self.get_cur_bgs(), self.old_bg)
+        img_dif = cv2.pow(img_dif.astype(np.int32), 2)
+        self.var = np.sum(img_dif)
+
+        # print('Zone', self.zone_id ,'variance', self.var, self.best_var)
+        if self.var <= self.best_var:
+            print('Zone', self.zone_id , 'Variation satisfied********')
+            self.best_var = self.var
+            self.bg_output = self.get_cur_bgs() # generated background
+            self.update_flag = True
+
+    def bg_update(self, frame, trigger_times, of_trigger = True, of_flg = True, var_flg = True, sift_flg = True):
+        if self.init_flag or of_trigger or not of_flg:
+            self.bgs_model_update(frame)
+    
+        if var_flg:
+            self.compare_var()
+        elif sift_flg:
+            if trigger_times > 50:
+                self.compare_sift()
+        else:
+            print('Zone', self.zone_id , '********')
+            self.bg_output = self.get_cur_bgs() # always update BG
+            self.update_flag = True
+
+######################## Zone Init Thread #########################
+def zone_initializing_process(cur_frame, trigger, of_on, var_on, sift_on, old_bg_img, mask_tuple, zone_id, of_event, zone_init_event, shutdown_event, bg_queue):
+    # Initialization
+    print('ZoneInit ' + str(zone_id), ': started')
+    zone_init = ZoneInitializer(old_bg_img, mask_tuple, zone_id)
+    count = 0
+    trigger_times = 0
+
+    # BG update
+    while True:
+        if shutdown_event.is_set():
+            break
+
+        of_event.wait()
+        zone_init_event.clear()
+
+        ###### ZoneInit Task ######
+        if trigger[zone_id]:
+            trigger_times += 1
+
+        zone_init.bg_update(cur_frame, trigger_times, of_trigger = trigger[zone_id], of_flg = of_on, var_flg = var_on, sift_flg = sift_on)
+
+        # cv2.imwrite('./data/bgsimg/'+str(zone_id)+'_'+str(count)+'_'+str(zone_init.var)+'.png', zone_init.get_cur_bgs())
+        count += 1
+        ###### ZoneInit Task ######
+
+        zone_init_event.set()
+        of_event.clear()
+
+    bg_queue.put([zone_init.get_bg(), zone_id])
+    
+    print('ZoneInit ' + str(zone_id), 'Done, best match score:', zone_init.best_score)
+
+class AppGUI():
+    def __init__(self):
+        # ImgProcessor
+        self.img_proc = img_processor.ImgProcessor()
+        self.frame_receive = False
+        self.tmp_img = None
+        self.current_raw = None
+        self.current_undist = None
+        self.current_detection = None
+
+        # Canvas Update Parameters
+        self.gui_update_time = 200
+        self.after_id = None
+        self.tmp_img = None
+
+        # Streaming Info
+        self.streaming_max_delay = 0.5
+        self.streaming_start_time = 0
+        self.update_frame_cnt = 0
+        self.total_frame_cnt = 0
+        self.total_fps = 0
+        self.ten_sec_frame_queue = []
+        self.ten_sec_fps = 0
+
+        # BG Parameters
+        current_bg_name = './data/background/bg_default.png'
+        self.current_bg = self.img_proc.BGR2RGB(self.img_proc.img_loader(current_bg_name))
+        
+        ############################# GUI #############################
+        # Main Window
+        self.window = tk.Tk()
+        self.window.title('GridSmart Detection')
+        self.window.geometry('1280x960')
+        self.window.resizable(False, False)
+
+        # RTSP Connection
+        self.address_label = tk.Label(self.window, text = 'RTSP Address:', font = ('Arial', 15))
+        self.address_label.place(relx = 0.02, rely = 0.06, relheight = 0.05, relwidth = 0.11, anchor = tk.NW)
+
+        self.address_var = tk.StringVar()
+        self.address_var.set('rtsp://169.235.68.132:9000/1')
+        self.address_entry = tk.Entry(self.window, textvariable = self.address_var, show = None, font = ('Arial', 15))
+        self.address_entry.place(relx = 0.15, rely = 0.06, relheight = 0.05, relwidth = 0.32, anchor = tk.NW)
+
+        self.streaming_ctr_flg = False
+        self.streaming_ctr_btn = tk.Button(self.window, text = 'Start Streaming', command = self.streaming_ctr_fun)
+        self.streaming_ctr_btn.place(relx = 0.52, rely = 0.06, relheight = 0.05, relwidth = 0.14, anchor = tk.NW)
+
+        self.streaming_save_flg = False
+        self.streaming_save_btn = tk.Button(self.window, text = 'Save Streaming', command = self.streaming_save_fun)
+        self.streaming_save_btn.place(relx = 0.67, rely = 0.06, relheight = 0.05, relwidth = 0.14, anchor = tk.NW)
+
+        self.streaming_info_label = tk.Label(self.window, text = 'Streaming Info:', font = ('Arial', 8))
+        self.streaming_info_label.place(relx = 0.82, rely = 0.06, relheight = 0.05, relwidth = 0.085, anchor = tk.NW)
+        self.total_fps_label = tk.Label(self.window, text = 'Total FPS: ' + str(self.total_fps), font = ('Arial', 8))
+        self.total_fps_label.place(relx = 0.9, rely = 0.062, relheight = 0.022, relwidth = 0.1, anchor = tk.NW)
+        self.ten_sec_fps_label = tk.Label(self.window, text = '10s FPS: ' + str(self.ten_sec_fps), font = ('Arial', 8))
+        self.ten_sec_fps_label.place(relx = 0.9, rely = 0.078, relheight = 0.022, relwidth = 0.1, anchor = tk.NW)
+
+        # Canvas
+        self.canvas = tk.Canvas(self.window, height = 640, width = 480, bg = 'gray')
+        self.canvas.place(relx = 0.26, rely = 0.2, relheight = 0.7, relwidth = 0.7, anchor = tk.NW)
+
+        # BG Initialization
+        self.zone_id_var = tk.StringVar()
+        self.zone_id_var.set('ZoneID')
+        self.zone_id_entry = tk.Entry(self.window, textvariable = self.zone_id_var, show = None, font = ('Arial', 8))
+        self.zone_id_entry.place(relx = 0.01, rely = 0.2, relheight = 0.05, relwidth = 0.05, anchor = tk.NW)
+        self.zone_update_time_var = tk.StringVar()
+        self.zone_update_time_var.set('Dur')
+        self.zone_update_time_entry = tk.Entry(self.window, textvariable = self.zone_update_time_var, show = None, font = ('Arial', 8))
+        self.zone_update_time_entry.place(relx = 0.06, rely = 0.2, relheight = 0.05, relwidth = 0.05, anchor = tk.NW)
+
+        self.auto_initialization_btn = tk.Button(self.window, text = 'Auto Init', command = self.auto_init_fun)
+        self.auto_initialization_btn.place(relx = 0.12, rely = 0.2, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+
+        self.init_mode_of_label = tk.Label(self.window, text = 'OF', font = ('Arial', 7))
+        self.init_mode_of_label.place(relx = 0.01, rely = 0.25, relheight = 0.02, relwidth = 0.02, anchor = tk.NW)
+        self.init_mode_var_label = tk.Label(self.window, text = 'VAR', font = ('Arial', 7))
+        self.init_mode_var_label.place(relx = 0.04, rely = 0.25, relheight = 0.02, relwidth = 0.02, anchor = tk.NW)
+        self.init_mode_sift_label = tk.Label(self.window, text = 'SIFT', font = ('Arial', 7))
+        self.init_mode_sift_label.place(relx = 0.07, rely = 0.25, relheight = 0.02, relwidth = 0.02, anchor = tk.NW)
+
+        self.init_mode_of_var = tk.BooleanVar()
+        self.init_mode_of_var.set(True)
+        self.init_mode_of_check = tk.Checkbutton(self.window, variable = self.init_mode_of_var, onvalue = True, offvalue= False)
+        self.init_mode_of_check.place(relx = 0.01, rely = 0.27, relheight = 0.02, relwidth = 0.02, anchor = tk.NW)
+
+        self.init_mode_var_var = tk.BooleanVar()
+        self.init_mode_var_var.set(True)
+        self.init_mode_var_check = tk.Checkbutton(self.window, variable = self.init_mode_var_var, onvalue = True, offvalue= False)
+        self.init_mode_var_check.place(relx = 0.04, rely = 0.27, relheight = 0.02, relwidth = 0.02, anchor = tk.NW)
+
+        self.init_mode_sift_var = tk.BooleanVar()
+        self.init_mode_sift_check = tk.Checkbutton(self.window, variable = self.init_mode_sift_var, onvalue = True, offvalue= False)
+        self.init_mode_sift_check.place(relx = 0.07, rely = 0.27, relheight = 0.02, relwidth = 0.02, anchor = tk.NW)
+
+        self.zone_bg_update_btn = tk.Button(self.window, text = 'Zone BG Update', command = self.manual_init_fun)
+        self.zone_bg_update_btn.place(relx = 0.12, rely = 0.25, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+
+        self.bg_load_btn = tk.Button(self.window, text = 'BG Load', command = self.bg_load)
+        self.bg_load_btn.place(relx = 0.01, rely = 0.3, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+
+        # BG Maintain
+        self.bg_maintain_flg = False
+        self.bg_maintain_btn = tk.Button(self.window, text = 'BG Maintaining', command = self.bg_maintain_fun)
+        self.bg_maintain_btn.place(relx = 0.12, rely = 0.3, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+
+        # Detection
+        self.detection_param_var = tk.StringVar()
+        self.detection_param_var.set('Detection Param')
+        self.detection_param_entry = tk.Entry(self.window, textvariable = self.detection_param_var, show = None, font = ('Arial', 8))
+        self.detection_param_entry.place(relx = 0.01, rely = 0.38, relheight = 0.05, relwidth = 0.21, anchor = tk.NW)
+
+        self.detection_ctr_flg = False
+        self.detection_ctr_btn = tk.Button(self.window, text = 'Start Detection', command = self.detection_ctr_fun)
+        self.detection_ctr_btn.place(relx = 0.01, rely = 0.43, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+        
+        self.detection_save_flg = False
+        self.detection_save_btn = tk.Button(self.window, text = 'Save Detection', command = self.detection_save_fun)
+        self.detection_save_btn.place(relx = 0.12, rely = 0.43, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+
+        # Visualization Selection
+        self.VS_var = tk.IntVar()
+        self.VS_var.set(1)
+
+        self.VS_none = tk.Radiobutton(self.window, text = 'None', variable = self.VS_var, value = 0)
+        self.VS_none.place(relx = 0.01, rely = 0.6, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+
+        self.VS_raw = tk.Radiobutton(self.window, text = 'Raw', variable = self.VS_var, value = 1)
+        self.VS_raw.place(relx = 0.12, rely = 0.6, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+
+        self.VS_undist = tk.Radiobutton(self.window, text = 'Undist', variable = self.VS_var, value = 2)
+        self.VS_undist.place(relx = 0.01, rely = 0.65, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+
+        self.VS_detection = tk.Radiobutton(self.window, text = 'Detection', variable = self.VS_var, value = 3)
+        self.VS_detection.place(relx = 0.12, rely = 0.65, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+        
+        self.VS_BG = tk.Radiobutton(self.window, text = 'Dynamic BG', variable = self.VS_var, value = 4)
+        self.VS_BG.place(relx = 0.12, rely = 0.78, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+
+        self.VS_zone_var = tk.StringVar()
+        self.VS_zone_var.set(('All', 'Zone 0', 'Zone 1', 'Zone 2', 'Zone 3', 'Zone 4', 
+                              'Zone 5', 'Zone 6', 'Zone 7', 'Zone 8', 'Zone 9', 'Zone 10', 'Zone 11', 'Zone 12'))
+        self.VS_zone_listbox = tk.Listbox(self.window, listvariable = self.VS_zone_var)
+        self.VS_zone_listbox.select_set(0)
+        self.VS_zone_listbox.place(relx = 0.01, rely = 0.7, relheight = 0.2, relwidth = 0.1, anchor = tk.NW)
+
+        # Communication
+        self.socket_connection_flg = False
+        self.socket_connection = tk.Button(self.window, text = 'Connect Server', command = self.socket_connection_fun)
+        self.socket_connection.place(relx = 0.01, rely = 0.52, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+
+        self.socket_send_flg = False
+        self.socket_send = tk.Button(self.window, text = 'Send Data', command = self.socket_send_fun)
+        self.socket_send.place(relx = 0.12, rely = 0.52, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+
+    def streaming_ctr_fun(self):
+        if self.streaming_ctr_flg:
+            print('Streaming manually stopped!')
+            self.frame_receive = False
+            self.streaming_ctr_flg = False
+            self.streaming_ctr_btn.config(text = 'Start Streaming')
+            self.streaming_save_flg = False
+            self.streaming_save_btn.config(text = 'Save Streaming')
+            self.detection_ctr_flg = False
+            self.detection_ctr_btn.config(text = 'Start Detection')
+            self.detection_save_flg = False
+            self.detection_save_btn.config(text = 'Save Detection')
+            self.address_entry.config({'background': 'white'})
+            self.detection_param_entry.config({'background': 'white'})
+            self.window.after_cancel(self.after_id)
+            self.after_id = None
+            self.total_frame_cnt = 0
+            self.update_frame_cnt = 0
+            self.total_fps = 0
+            self.ten_sec_frame_queue = []
+            self.ten_sec_fps = 0
+            self.total_fps_label.config(text = 'Total FPS: 0.0')
+            self.ten_sec_fps_label.config(text = '10s FPS: 0.0')
+        else:
+            print('RTSP connect...')
+            self.streaming_ctr_flg = True
+            self.streaming_ctr_btn.config(text = 'Stop Streaming')
+            address = self.address_entry.get()
+            self.cur_rtsp_collector = rtsp_collector.RtspCollector(address) ##### Init streaming collector #####
+            self.frame_receive, _ = self.cur_rtsp_collector.get_frame()
+
+            if self.frame_receive:
+                print('Conneced!')
+                self.address_entry.config({'background': 'green'})
+                self.streaming_start_time = time.time()
+
+                cur_streaming_thread = threading.Thread(target = self.streaming_thread, daemon=True)
+                cur_streaming_thread.start()
+
+                # set visualization canvas
+                if self.after_id == None:
+                    self.after_id = self.window.after(self.gui_update_time, self.canvas_update)
+            else:
+                print('Streaming fail!')
+                self.address_entry.config({'background': 'red'})
+                self.streaming_ctr_flg = False
+                self.streaming_ctr_btn.config(text = 'Start Streaming')
+                self.window.after_cancel(self.after_id)
+                self.after_id = None
+          
+    def streaming_save_fun(self):
+        if self.streaming_save_flg:
+            print('Stop saving streaming data')
+            self.streaming_save_flg = False
+            self.streaming_save_btn.config(text = 'Save Streaming')
+        else:
+            if not self.streaming_ctr_flg:
+                tk.messagebox.showerror('Error', 'Please start streaming first!')
+            else:
+                print('Save raw!')
+                self.streaming_save_flg = True
+                self.streaming_save_btn.config(text = 'Stop Saving Streaming')
+
+    def streaming_thread(self):
+        print('Streaming!')
+        while self.frame_receive and self.streaming_ctr_flg:
+            self.frame_receive, frame = self.cur_rtsp_collector.get_frame()
+            
+            if self.frame_receive:
+                # Calculate FPS
+                cur_time = time.time()
+                self.total_frame_cnt += 1
+                self.total_fps = self.total_frame_cnt / (cur_time - self.streaming_start_time)
+                self.total_fps = round(self.total_fps, 1)
+                while len(self.ten_sec_frame_queue) > 0 and cur_time - self.ten_sec_frame_queue[0] > 10:
+                    self.ten_sec_frame_queue.pop(0)
+                self.ten_sec_frame_queue.append(cur_time)
+                if cur_time - self.streaming_start_time < 10:
+                    self.ten_sec_fps = self.total_fps
+                else:
+                    self.ten_sec_fps = round(len(self.ten_sec_frame_queue) / 10, 1)
+
+                # Frame skip to assure fps
+                if cur_time - self.streaming_start_time < 10:
+                    if self.total_frame_cnt > (cur_time - self.streaming_start_time - self.streaming_max_delay) * 10:
+                        ####### Update Current Image #######
+                        self.current_raw = self.img_proc.get_raw(frame)
+                        self.current_undist = self.img_proc.get_undist(frame)
+                        self.update_frame_cnt += 1
+
+                        # Update Streaming Info on GUI    
+                        self.total_fps_label.config(text = 'Total FPS: ' + str(self.total_fps))
+                        self.ten_sec_fps_label.config(text = '10s FPS: ' + str(self.ten_sec_fps))
+
+                        # Save Raw and Undist
+                        if self.streaming_save_flg:
+                            now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                            self.img_proc.img_saver(self.img_proc.RGB2BGR(self.current_raw), '../data/raw/', now)
+                            self.img_proc.img_saver(self.img_proc.RGB2BGR(self.current_undist), '../data/undist/', now)
+                    else:
+                        print('### Skip frame, updated frame in 10s:', self.total_frame_cnt)
+                else:
+                    if len(self.ten_sec_frame_queue)  > (10 - self.streaming_max_delay) * 10:
+                        ####### Update Current Image #######
+                        self.current_raw = self.img_proc.get_raw(frame)
+                        self.current_undist = self.img_proc.get_undist(frame)
+                        self.update_frame_cnt += 1
+
+                        # Update Streaming Info on GUI    
+                        self.total_fps_label.config(text = 'Total FPS: ' + str(self.total_fps))
+                        self.ten_sec_fps_label.config(text = '10s FPS: ' + str(self.ten_sec_fps))
+
+                        # Save Raw and Undist
+                        if self.streaming_save_flg:
+                            now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                            self.img_proc.img_saver(self.img_proc.RGB2BGR(self.current_raw), '../data/raw/', now)
+                            self.img_proc.img_saver(self.img_proc.RGB2BGR(self.current_undist), '../data/undist/', now)
+                    else:
+                        print('### Skip frame, updated frame in 10s:', len(self.ten_sec_frame_queue))
+            else:
+                print('Streaming fail!')
+                self.address_entry.config({'background': 'red'})
+                self.streaming_ctr_flg = False
+                self.streaming_ctr_btn.config(text = 'Start Streaming')
+                self.total_frame_cnt = 0
+                self.update_frame_cnt = 0
+                self.total_fps = 0
+                self.ten_sec_frame_queue = []
+                self.ten_sec_fps = 0
+
+    def auto_init_fun(self):
+        if not self.streaming_ctr_flg:
+            tk.messagebox.showerror('Error', 'Please start streaming first!')
+        else:
+            running_time = self.zone_update_time_entry.get()
+            if running_time.isnumeric():
+                running_time = int(running_time)
+            else:
+                running_time = 10
+
+            print('Auto Init', running_time, 'sec...')
+
+            auto_init_main = threading.Thread(target = self.auto_init_main_thread, args = (running_time,), daemon=True)
+            auto_init_main.start()
+            self.zone_update_time_entry.config({'background': 'red'})
+
+    def auto_init_main_thread(self, running_time):
+        print('Auto Init Main Thread Started...')
+        start_time = time.time()
+
+        number_of_zone = 13
+        frame_idx = 0
+        frame_num = 1000
+
+        ##### Shared Memory #####
+        cur_frame_shared_memory = shared_memory.SharedMemory(create = True, size = 960 * 960 * 3)
+        cur_frame_buffer = np.ndarray((960, 960, 3), dtype = 'uint8', buffer = cur_frame_shared_memory.buf)
+
+        trigger_shared_memory = shared_memory.ShareableList([True for _ in range(number_of_zone)])
+        
+        ##### BG Queue #####
+        manager = Manager()
+        bg_queue = manager.Queue()
+
+        ##### Events #####
+        of_event = Event()
+        zone_init_events = [Event() for _ in range(number_of_zone)]
+        shutdown_event = Event()
+
+        ##### Start Multi-process #####
+        bg_init_process_list = [Process(target = zone_initializing_process, 
+                                        args = (cur_frame_buffer, trigger_shared_memory,
+                                                self.init_mode_of_var.get(), self.init_mode_var_var.get(), self.init_mode_sift_var.get(),
+                                                old_bg_img, mask_tuple, zone_id, 
+                                                of_event, zone_init_events[zone_id], shutdown_event, bg_queue))
+                                for zone_id in range(number_of_zone)]
+
+        for p in bg_init_process_list:
+            p.start()
+
+        time.sleep(0.1)
+
+        cur_frame = self.current_undist[:,160:-160]
+
+        of_trigger = BgOpticalFlowTrigger(cur_frame, mask_flow, mask_tuple)
+
+        while 1:
+            frame_idx += 1
+            # if frame_idx >= frame_num:
+            if time.time() - start_time > running_time:
+                of_event.set()
+                shutdown_event.set()
+                break
+
+            print('\n######### Current frame:', frame_idx, 'Running time:', int(time.time() - start_time), ' ############')
+            of_event.clear()
+
+            ###### OpticalFlow Task ######
+            cur_frame = self.current_undist[:,160:-160]
+            cur_frame_buffer[:] = cur_frame[:]
+
+            ########## Use OF or not ############
+            if self.init_mode_of_var.get():
+                of_trigger.update(cur_frame)
+
+                for idx in range(number_of_zone):
+                    trigger_shared_memory[idx] = of_trigger.is_zone_triggered(idx)
+
+                print('Trigger: ', trigger_shared_memory)
+
+
+            of_event.set()
+
+            for zone_init_event in zone_init_events:
+                zone_init_event.clear()
+
+            for zone_init_event in zone_init_events:
+                zone_init_event.wait()
+
+        for p in bg_init_process_list:
+            p.join()
+
+        bg_result_list = [bg_queue.get() for _ in range(number_of_zone)]
+        bg_final = np.zeros((960,960,3), dtype = 'uint8')
+        for i in range(number_of_zone):
+            zero_img = np.zeros((960,960,3), dtype = 'uint8')
+
+            zero_img[crop_position[bg_result_list[i][1]][0] : crop_position[bg_result_list[i][1]][0] + 480,
+                     crop_position[bg_result_list[i][1]][1] : crop_position[bg_result_list[i][1]][1] + 480] = bg_result_list[i][0]
+            bg_final = cv2.add(bg_final, zero_img)
+            del zero_img
+
+        end_time = time.time()
+        print('##### Sec/Frame:', (end_time - start_time) / frame_idx, '#####')
+    
+        ###### Close SharedMemory ######
+        cur_frame_shared_memory.close()
+        cur_frame_shared_memory.unlink()
+        trigger_shared_memory.shm.close()
+        trigger_shared_memory.shm.unlink()
+
+        self.current_bg = bg_final
+        now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+        self.img_proc.img_saver(self.img_proc.RGB2BGR(self.current_bg), './data/background/', now)
+
+        self.zone_update_time_entry.config({'background': 'green'})
+        time.sleep(1)
+        self.zone_update_time_entry.config({'background': 'white'})
+        print('All Initialization Done.')
+
+    def manual_init_fun(self):
+        if not self.streaming_ctr_flg:
+            tk.messagebox.showerror('Error', 'Please start streaming first!')
+        else:
+            running_time = self.zone_update_time_entry.get()
+            if running_time.isnumeric():
+                running_time = int(running_time)
+            else:
+                running_time = 10
+
+            zone_id = self.zone_id_entry.get()
+            if zone_id.isnumeric() and int(zone_id) < 13:
+                zone_id = int(zone_id)
+            else:
+                zone_id = 0
+
+            print('Zone', zone_id, 'Init', running_time, 'sec...')
+
+            auto_init_main = threading.Thread(target = self.manual_init_main_thread, args = (running_time, zone_id), daemon=True)
+            auto_init_main.start()
+            self.zone_id_entry.config({'background': 'red'})
+            self.zone_update_time_entry.config({'background': 'red'})
+
+    def manual_init_main_thread(self, running_time, zone_id):
+        print('Manual Init Main Thread Started...')
+        start_time = time.time()
+
+        number_of_zone = 13
+        frame_idx = 0
+        frame_num = 1000
+
+        ##### Shared Memory #####
+        cur_frame_shared_memory = shared_memory.SharedMemory(create = True, size = 960 * 960 * 3)
+        cur_frame_buffer = np.ndarray((960, 960, 3), dtype = 'uint8', buffer = cur_frame_shared_memory.buf)
+
+        trigger_shared_memory = shared_memory.ShareableList([True for _ in range(number_of_zone)])
+        
+        ##### BG Queue #####
+        manager = Manager()
+        bg_queue = manager.Queue()
+
+        ##### Events #####
+        of_event = Event()
+        zone_init_event = Event()
+        shutdown_event = Event()
+
+        ##### Start Multi-process #####
+        bg_init_process_list = [Process(target = zone_initializing_process, 
+                                        args = (cur_frame_buffer, trigger_shared_memory,
+                                                self.init_mode_of_var.get(), self.init_mode_var_var.get(), self.init_mode_sift_var.get(),
+                                                old_bg_img, mask_tuple, zone_id, 
+                                                of_event, zone_init_event, shutdown_event, bg_queue)),]
+
+        for p in bg_init_process_list:
+            p.start()
+
+        time.sleep(0.1)
+
+        cur_frame = self.current_undist[:,160:-160]
+
+        of_trigger = BgOpticalFlowTrigger(cur_frame, mask_flow, mask_tuple)
+
+        while 1:
+            frame_idx += 1
+            # if frame_idx >= frame_num:
+            if time.time() - start_time > running_time:
+                of_event.set()
+                shutdown_event.set()
+                break
+
+            print('\n######### Current frame:', frame_idx, 'Running time:', int(time.time() - start_time), ' ############')
+            of_event.clear()
+
+            ###### OpticalFlow Task ######
+            cur_frame = self.current_undist[:,160:-160]
+            cur_frame_buffer[:] = cur_frame[:]
+
+            ########## Use OF or not ############
+            if self.init_mode_of_var.get():
+                of_trigger.update(cur_frame)
+                trigger_shared_memory[zone_id] = of_trigger.is_zone_triggered(zone_id)
+
+                # print('Main Trigger:', trigger_shared_memory)
+
+            # print('OpticalFlow: finished!!!!!!!')
+            of_event.set()
+
+            # print('Main: Wait for ZoneInit')
+            zone_init_event.clear()
+            zone_init_event.wait()
+
+        for p in bg_init_process_list:
+            p.join()
+
+        bg_result_list = [bg_queue.get(),]
+        bg_final = np.zeros((960,960,3), dtype = 'uint8')
+        zero_img = np.zeros((960,960,3), dtype = 'uint8')
+        zero_img[crop_position[bg_result_list[0][1]][0] : crop_position[bg_result_list[0][1]][0] + 480,
+                 crop_position[bg_result_list[0][1]][1] : crop_position[bg_result_list[0][1]][1] + 480] = bg_result_list[0][0]
+        bg_final = cv2.add(bg_final, zero_img)
+        del zero_img
+
+        end_time = time.time()
+
+        print('##### Sec/Frame:', (end_time - start_time) / frame_idx, '#####')
+    
+        ###### Close SharedMemory ######
+        cur_frame_shared_memory.close()
+        cur_frame_shared_memory.unlink()
+        trigger_shared_memory.shm.close()
+        trigger_shared_memory.shm.unlink()
+
+        current_bg_no_zone = cv2.bitwise_and(self.current_bg.copy(), 
+                                             self.current_bg.copy(), 
+                                             mask = cv2.bitwise_not(mask_tuple[zone_id]))
+        self.current_bg = cv2.add(current_bg_no_zone, bg_final)
+
+        now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+        self.img_proc.img_saver(self.img_proc.RGB2BGR(self.current_bg), './data/background/', now)
+
+        self.zone_update_time_entry.config({'background': 'green'})
+        self.zone_id_entry.config({'background': 'green'})
+        time.sleep(1)
+        self.zone_update_time_entry.config({'background': 'white'})
+        self.zone_id_entry.config({'background': 'white'})
+        print('Zone Initialization Done.')
+
+    def bg_load(self):
+        filetype = (('JPG', '*.jpg'), ('PNG', '*.png'), )
+        current_bg_name = fd.askopenfilename(title = 'Load a background', initialdir='../data/', filetypes = filetype)
+        self.current_bg = self.img_proc.BGR2RGB(self.img_proc.img_loader(current_bg_name))
+        print('Load:')
+        print(current_bg_name)
+
+    def bg_maintain_fun(self):
+        if self.bg_maintain_flg:
+            print('BG maintain stopped!')
+            self.bg_maintain_flg = False
+            self.bg_maintain_btn.config(text = 'BG Maintaining')
+        else:
+            if not self.streaming_ctr_flg:
+                tk.messagebox.showerror('Error', 'Please start streaming first!')
+            else:
+                print('Start BG maintain...')
+                self.bg_maintain_flg = True
+                self.bg_maintain_btn.config(text = 'Stop BG Maintain')
+
+                cur_bg_maintain_thread = threading.Thread(target = self.bg_maintain_thread, daemon=True)
+                cur_bg_maintain_thread.start()
+
+    def bg_maintain_thread(self):
+        print('BG Maintaining!')
+        update_frame_cnt_last = -1
+
+        # Initialization
+        algorithm = bgs.MixtureOfGaussianV2()
+        algorithm_2 = bgs.MixtureOfGaussianV2()
+        algorithm_test = bgs.MixtureOfGaussianV2()
+
+        bg_buffer = self.current_bg.copy()
+        bg_buffer_2 = self.current_bg.copy()
+        bg_buffer_test = self.current_bg.copy()
+
+        _ = algorithm.apply(self.current_bg)
+        _ = algorithm_2.apply(self.current_bg)
+        _ = algorithm_test.apply(self.current_bg)
+
+        dirty_mask_queue = queue.Queue(60)
+
+        bg_maintain_cnt = -1
+        ratio = 0.2
+
+        while self.bg_maintain_flg:
+            # if frame update
+            if self.update_frame_cnt > update_frame_cnt_last:
+                bg_maintain_cnt += 1
+                print('Maintaining frame:', self.update_frame_cnt, bg_maintain_cnt)
+                update_frame_cnt_last = self.update_frame_cnt
+
+                ########## Maintain Task ##########
+                current_undist_sample = self.current_undist.copy()
+                current_undist_sample = current_undist_sample[:, 160 : -160]
+                current_undist_sample = cv2.bitwise_and(current_undist_sample, current_undist_sample, mask = mask_all)
+                img_diff = cv2.absdiff(bg_buffer_2, current_undist_sample)
+
+                # now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                # self.img_proc.img_saver(cv2.cvtColor(img_diff, cv2.COLOR_RGB2BGR), './debug/', now)
+
+                ##### diff -> normal -> gray -> morph -> contour -> not -> & mask
+                img_diff = img_diff / 16
+                img_diff_gray = cv2.add(cv2.pow(img_diff[:, :, 0], 2) / 3,
+                                        cv2.pow(img_diff[:, :, 1], 2) / 3,
+                                        cv2.pow(img_diff[:, :, 2], 2) / 3)
+
+                _, img_bg_opened = cv2.threshold(img_diff_gray, 0.5, 255, cv2.THRESH_BINARY)
+                img_bg_opened = cv2.convertScaleAbs(img_bg_opened)
+                img_bg_opened = cv2.morphologyEx(img_bg_opened, cv2.MORPH_OPEN, kernel3, iterations = 1)
+                img_bg_opened = cv2.dilate(img_bg_opened, kernel2, iterations=1)
+                contours, _ = cv2.findContours(img_bg_opened, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+                for contour in contours:
+                    if cv2.contourArea(contour)>300:
+                        cv2.fillConvexPoly(img_bg_opened, contour, (255, 255, 255))
+                        cv2.drawContours(img_bg_opened, contour, -1, (255, 255, 255), cv2.FILLED)
+                    else:
+                        cv2.drawContours(img_bg_opened, contour, -1, (0, 0, 0), cv2.FILLED)
+
+                img_bg_mask = cv2.bitwise_not(img_bg_opened)
+                frame_bg = cv2.bitwise_and(mask_all, img_bg_mask)
+
+                # now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                # self.img_proc.img_saver(cv2.cvtColor(frame_bg, cv2.COLOR_RGB2BGR), './debug/', now)
+
+                current_frame_renew = cv2.bitwise_and(current_undist_sample, current_undist_sample, mask = frame_bg)
+
+                # now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                # self.img_proc.img_saver(cv2.cvtColor(current_frame_renew, cv2.COLOR_RGB2BGR), './debug/', now)
+
+                bg_renew = cv2.addWeighted(current_frame_renew, 
+                                           ratio, 
+                                           cv2.bitwise_and(bg_buffer, bg_buffer, mask = frame_bg) , 
+                                           (1 - ratio), 
+                                           0)
+
+                # now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                # self.img_proc.img_saver(cv2.cvtColor(bg_renew, cv2.COLOR_RGB2BGR), './debug/', now)
+
+                if bg_maintain_cnt % 2 == 0:
+                    bg_keep = cv2.bitwise_and(bg_buffer, bg_buffer, mask = img_bg_opened)
+                else:
+                    bg_keep = cv2.bitwise_and(bg_buffer_test, bg_buffer_test, mask = img_bg_opened)
+
+                bg_buffer = cv2.add(bg_renew, bg_keep)
+
+                _ = algorithm.apply(bg_buffer) # bg_buffer
+                img_bgmodel = algorithm.getBackgroundModel()
+
+                bgs_diff = cv2.absdiff(bg_buffer_test, bg_buffer)
+
+                bgs_diff_gray = cv2.cvtColor(bgs_diff, cv2.COLOR_BGR2GRAY)
+
+                _, bgs_diff_opened = cv2.threshold(bgs_diff_gray, 5, 255, cv2.THRESH_BINARY)
+
+                bgs_diff_opened = cv2.morphologyEx(bgs_diff_opened, cv2.MORPH_OPEN, kernel3, iterations=1)
+
+                bgs_mask = cv2.bitwise_not(bgs_diff_opened)
+
+                frame_bgs = cv2.bitwise_and(mask_all, bgs_mask)
+
+                bg_2_renew =  cv2.addWeighted(cv2.bitwise_and(img_bgmodel,img_bgmodel,mask = frame_bgs), 
+                                              0.3,
+                                              cv2.bitwise_and(bg_buffer, bg_buffer,mask = frame_bgs), 
+                                              0.7, 
+                                              0)
+
+                bg_2_keep = cv2.bitwise_and(bg_buffer,bg_buffer,mask = bgs_diff_opened)
+
+                bg_buffer_2 = cv2.add(bg_2_renew, bg_2_keep)
+
+                _ = algorithm_2.apply(bg_buffer_2)
+
+                bg_buffer_2 = algorithm_2.getBackgroundModel()
+
+                ##### correct dirty area which has long-last mask
+                if bg_maintain_cnt % 10 == 0:
+                    dirty_mask_queue.put(img_bg_opened)
+                    if bg_maintain_cnt % 600 == 0:
+                        dirty_mask = dirty_mask_queue.get()
+                        while not dirty_mask_queue.empty():
+                            temp = dirty_mask_queue.get()
+                            dirty_mask = cv2.bitwise_and(dirty_mask, temp)
+
+                        bg_buffer_2 = cv2.add(cv2.bitwise_and(bg_buffer_test, bg_buffer_test, mask = dirty_mask), 
+                                              cv2.bitwise_and(bg_buffer_2, bg_buffer_2, mask = cv2.bitwise_not(dirty_mask)))
+
+                ##### Output #####
+                # now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                # self.img_proc.img_saver(cv2.cvtColor(bg_buffer_2, cv2.COLOR_RGB2BGR), './data/background/', now)
+                self.current_bg = bg_buffer_2
+                ##### Output #####
+
+                if bg_maintain_cnt % 50 == 0:
+                    _ = algorithm_2.apply(bg_buffer_test)
+
+                if bg_maintain_cnt % 300 == 0:
+                    print('################ Maintainance Frame: ', bg_maintain_cnt, '################')
+                    _ = algorithm_test.apply(current_undist_sample)
+                    bg_buffer_test = algorithm_test.getBackgroundModel()
+
+                ########## Maintain Task ##########
+            else:
+                pass
+
+    def detection_ctr_fun(self):
+        if self.detection_ctr_flg:
+            print('Detection stopped!')
+            self.detection_ctr_flg = False
+            self.detection_ctr_btn.config(text = 'Start Detection')
+            self.detection_save_flg = False
+            self.detection_save_btn.config(text = 'Save Detection')
+            self.detection_param_entry.config({'background': 'white'})
+        else:
+            if not self.streaming_ctr_flg:
+                tk.messagebox.showerror('Error', 'Please start streaming first!')
+            else:
+                print('Start detection...')
+                self.detection_ctr_flg = True
+                self.detection_ctr_btn.config(text = 'Stop Detection')
+                self.detection_param_entry.config({'background': 'green'})
+
+                cur_detection_thread = threading.Thread(target = self.detection_thread, daemon=True)
+                cur_detection_thread.start()
+
+    def detection_thread(self):
+        print('Detecting!')
+        update_frame_cnt_last = -1
+
+        # Initialization
+        trajecotry_queue = queue.Queue(10)
+        trajecotry_number = 10
+        bbox_list_last = np.array([], 'float32')
+        detection_cnt = -1
+        init_flag = True
+        width = 960
+        height = 960
+        now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+        self.detection_file = open('./data/results/detection_'+now + '.csv', 'w')
+        detection_writer = csv.writer(self.detection_file)
+        detection_writer.writerow(['Time', 'Detection (Lat, Lon, Yaw, Speed)'])
+
+        while self.detection_ctr_flg:
+            if self.update_frame_cnt > update_frame_cnt_last:
+                detection_cnt += 1
+                print('detecting frame:', self.update_frame_cnt, detection_cnt)
+                update_frame_cnt_last = self.update_frame_cnt
+                
+                ########## Detection Task ##########
+                bbox_list_ori = []
+                bbox_list = []
+                bbox_list_rt = []
+
+                current_undist_sample = self.current_undist.copy()
+                current_undist_sample = current_undist_sample[:, 160 : -160]
+                current_undist_sample = cv2.bitwise_and(current_undist_sample, current_undist_sample, mask = mask_all)
+                current_time_sample = time.time()
+
+                current_bg_sample = self.current_bg.copy()
+                # img_showof = self.current_bg.copy()
+                img_diff = cv2.absdiff(current_bg_sample, current_undist_sample)
+
+                if init_flag:
+                    init_flag = False
+                    img_prev_gray = cv2.cvtColor(current_bg_sample, cv2.COLOR_BGR2GRAY)
+                    img_prev_gray = cv2.resize(img_prev_gray, 
+                                               (int(width / 4),int(height / 4)),
+                                               interpolation = cv2.INTER_AREA)
+                    continue
+                else:
+                    img_undist_low = cv2.resize(current_undist_sample,
+                                                (int(width / 4),int(height / 4)),
+                                                interpolation=cv2.INTER_AREA)
+                    img_showof = img_undist_low.copy()
+
+                img_diff_gray = cv2.cvtColor(img_diff, cv2.COLOR_BGR2GRAY)
+                img_gray = cv2.cvtColor(img_undist_low, cv2.COLOR_BGR2GRAY)
+
+                ##### Optical Flow
+                flow = cv2.calcOpticalFlowFarneback(img_prev_gray, img_gray, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+                img_prev_gray = img_gray
+                mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1], angleInDegrees=True)
+                mag[np.isinf(mag)] = 0
+                mag[np.isnan(mag)] = 0
+                mag = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U) #  mag shape 960 1280
+
+                mag = cv2.resize(mag, (int(width), int(height)), interpolation = cv2.INTER_AREA)
+                ang = cv2.resize(ang, (int(width), int(height)), interpolation = cv2.INTER_AREA)
+
+                # y, x = np.mgrid[10/ 2:960:10, 10/ 2:960:10].reshape(2,-1).astype(int)
+                # fx,fy =flow[y,x].T
+                # lines = np.vstack([x,y,x+fx,y+fy]).T.reshape(-1,2,2)
+                # lines = np.int32(lines)
+                # line = []
+                # for l in lines:
+                #     if l[0][0] - l[1][0] >1 or l[0][1] - l[1][1]>1:
+                #         line.append(l)
+                # cv2.polylines(img_showof, line, 0, (0,255,255))
+                # cv2.imwrite('./debug/of/'+str(self.update_frame_cnt)+'.png', img_showof)
+
+                
+                ##### Vehicle Contour
+                _, img_bin = cv2.threshold(img_diff_gray, 20, 255, cv2.THRESH_BINARY)
+                img_opened = cv2.morphologyEx(img_bin, cv2.MORPH_CLOSE, kernel, iterations=3)
+                img_opened = cv2.morphologyEx(img_bin, cv2.MORPH_OPEN, kernel, iterations=3)
+                img_dilated = cv2.dilate(img_opened, None, iterations=1)
+
+                contours, _ = cv2.findContours(img_opened, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+                for contour in contours:
+                    (x, y, w, h) = cv2.boundingRect(contour)
+                    if cv2.contourArea(contour) / (1 + math.sqrt((x - 480)**2 + (y - 480)**2) / (2 * 480**2)) > 500:
+                        hull = cv2.convexHull(contour, returnPoints = False)
+                        try:
+                            defects = cv2.convexityDefects(contour, hull)
+                        except: continue
+                        if defects is None: continue
+                        concave_point_list = []
+                        concave_point_dis_list = []
+
+                        for i in range(defects.shape[0]):
+                            s,e,f,d = defects[i,0]
+                            start = tuple(contour[s][0])
+                            end = tuple(contour[e][0])
+                            far = tuple(contour[f][0])
+
+                            if d > 2500:
+                                concave_point_list.append(far)
+                                concave_point_dis_list.append(d)
+
+                            if np.size(concave_point_dis_list)>1:
+                                index = np.argsort(concave_point_dis_list)
+                                cv2.line(img_opened, concave_point_list[index[-1]], concave_point_list[index[-2]], (0,0,0), 3)
+
+                contours, _ = cv2.findContours(img_opened, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+                img_contours = current_undist_sample.copy()
+
+                cntr_cnt = 0
+                
+                for contour in contours:
+                    if cv2.contourArea(contour) / (1 + math.sqrt((x - 480)**2 + (y - 480)**2) / (2 * 480**2)) > 300:
+                        # Get bbox
+                        (x, y, w, h) = cv2.boundingRect(contour)
+                        min_rect = cv2.minAreaRect(contour) # (center), (w, h), rotation
+                        min_box_points = cv2.boxPoints(min_rect)
+                        min_box_points = min_box_points.astype(int)
+
+                        hull = cv2.convexHull(contour, returnPoints = False)
+
+                        if cv2.contourArea(contour) / (1 + math.sqrt((x - 480)**2 + (y - 480)**2)/(2*480**2)) > 3000 and\
+                           (np.max(min_rect[1]) / np.min(min_rect[1]) > 1.5):
+                            sub_opened = img_opened[y:y+h+1, x:x+w+1] # Vehicle sub area
+                            ero_iter = 3
+                            sub_contours = [1, ] # contour after erode
+
+                            # Erode until seperate
+                            while len(sub_contours) < 2:
+                                sub_eroded = cv2.erode(sub_opened, kernel, iterations = ero_iter)
+                                sub_contours, _ = cv2.findContours(sub_eroded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+                                ero_iter += 1
+                                if ero_iter == 5:
+                                    break
+
+                            # Check subcontour after erosion
+                            for sub_contour in sub_contours:
+                                if cv2.contourArea(sub_contour)/(1 + math.sqrt((x-480)**2+(y-480)**2)/(2*480**2)) > 300:
+                                    # print('sub contour', sub_contour)
+                                    ang_mask = np.zeros(ang.shape, np.uint8)
+                                    sub_contour_t = sub_contour + [x,y]
+                                    cv2.drawContours(ang_mask, [sub_contour_t], -1, 255,  thickness=-1)
+                                    # cv2.imwrite('./debug/ang/1.png',ang_mask)
+                                    ang_mean_raw = cv2.mean(cv2.bitwise_and(ang,ang,mask = ang_mask),  mask=ang_mask)[0]
+                                    # ang_mean_img = cv2.bitwise_and(ang,ang,mask = ang_mask)
+                                    # ang_mean_raw = ang_mean_img.max()
+                                    ang_mean = ang_mean_raw
+                                    # Get Bbox
+                                    (sub_x, sub_y, sub_w, sub_h) = cv2.boundingRect(sub_contour)
+                                    min_rect = cv2.minAreaRect(sub_contour) # center, w, h, rotation
+                                    mag_mean = cv2.mean(cv2.bitwise_and(mag,mag,mask = ang_mask),  mask=ang_mask)[0]
+                                    ori_ang = min_rect[2]
+                                    ang_mean += 90
+                                    ang_sent = ang_mean_raw
+
+                                    center_x = sub_x + int(sub_w/2) + x
+                                    center_y = sub_y + int(sub_h/2) + y
+                                    _, cal_angle = divide_orientation([center_x, center_y])
+                                    if not cal_angle:
+                                        cal_angle = ang_sent
+                                    ang_mean = cal_angle + 90
+
+                                    if mag_mean>20: # otherwise static vehicle
+                                        temp = (min_rect[0], (np.min(min_rect[1]), np.max(min_rect[1])), ang_mean)
+                                        min_rect = temp
+                                    elif bbox_list_last.size:# use nearest point angular in the last frame
+                                        distance_last_frame = np.power(bbox_list_last[:,:2] - [min_rect[0][0]+x, min_rect[0][1]+y], 2)
+                                        nearest_point_id = np.argmin(np.sum(distance_last_frame,axis = 1))
+                                        ang_mean = bbox_list_last[nearest_point_id,-1]
+                                        temp = (min_rect[0], (np.min(min_rect[1]), np.max(min_rect[1])), ang_mean)
+                                        # temp = (min_rect[0], min_rect[1], ang_mean)
+                                        min_rect = temp
+                                    else: # if there is no bblist_last
+                                        if min_rect[1][0] > np.min(min_rect[1]):
+                                            ang_mean = min_rect[-1]+90
+                                        temp = (min_rect[0], (np.min(min_rect[1]), np.max(min_rect[1])), ang_mean)
+                                        min_rect = temp
+
+                                    min_box_points = cv2.boxPoints(min_rect)
+                                    min_box_points = min_box_points.astype(int) + [x, y]
+
+                                    hull = cv2.convexHull(sub_contour, returnPoints = False)
+
+                                    new_x = sub_x + x
+                                    new_y = sub_y + y
+
+
+
+                                    ###### Draw Bbox ######
+                                    cv2.drawContours(img_contours, [min_box_points], -1, (0, 255, 0), 3) # Min bbox
+                                    cv2.circle(img_contours, (center_x, center_y), 5, (255, 0, 0), -1)
+
+                                    # text = ['***' + str(cntr_cnt)+', '+str(round(min_rect[-1],2))+', '+str(round(ang_mean_raw,2))]
+                                    # cv2.putText(img_contours, text[0], (sub_x + x, sub_y + y), cv2.FONT_HERSHEY_PLAIN, 1.6, (0, 0, 255), 2)
+
+
+                                    bbox_list_ori.append([new_x, new_y, sub_w, sub_h])
+                                    lat, lon = find_Lat_Lon(center_x, center_y)
+                                    bbox_list_rt.append([round(lat,6), round(lon,6), cal_angle, mag_mean])
+                                    bbox_list.append([center_x, center_y, min_rect[1][0], min_rect[1][1], mag_mean, min_rect[-1]])
+                                    cntr_cnt += 1
+                        else:
+                            ang_mask = np.zeros(ang.shape, np.uint8)
+                            cv2.drawContours(ang_mask, [contour], -1, 255, thickness=-1)
+                            ang_mean_raw = cv2.mean(cv2.bitwise_and(ang,ang,mask = ang_mask),  mask=ang_mask)[0] # *180/np.pi
+                            # ang_mean_img = cv2.bitwise_and(ang,ang,mask = ang_mask)
+                            # ang_mean_raw = ang_mean_img.max()
+                            mag_mean = cv2.mean(cv2.bitwise_and(mag,mag,mask = ang_mask),  mask=ang_mask)[0]
+                            ori_ang = min_rect[2]
+                            ang_mean = ang_mean_raw
+                            ang_mean += 90
+                            ang_sent = ang_mean_raw
+                            center_x = x + int(w/2)
+                            center_y = y + int(h/2)
+                            _, cal_angle = divide_orientation([center_x, center_y])
+                            if not cal_angle:
+                                cal_angle = ang_sent
+                            ang_mean = cal_angle + 90
+                            if mag_mean > 20: # otherwise static vehicle
+                                temp = (min_rect[0], (np.min(min_rect[1]), np.max(min_rect[1])), ang_mean)
+                                min_rect = temp
+                            elif bbox_list_last.size:# use nearest point angular in the last frame
+                                distance_last_frame = np.power(bbox_list_last[:,:2] - [min_rect[0][0], min_rect[0][1]], 2)
+                                nearest_point_id = np.argmin(np.sum(distance_last_frame,axis = 1))
+                                ang_mean = bbox_list_last[nearest_point_id,-1]
+                                
+                                temp = (min_rect[0], (np.min(min_rect[1]), np.max(min_rect[1])), ang_mean)
+                                # temp = (min_rect[0], min_rect[1], ang_mean)
+                                min_rect = temp
+                            else: # if there is no bblist_last
+                                if min_rect[1][0] > np.min(min_rect[1]):
+                                    ang_mean = min_rect[-1] + 90
+                                temp = (min_rect[0], (np.min(min_rect[1]), np.max(min_rect[1])), ang_mean)
+                                min_rect = temp
+                            
+
+
+
+                            min_box_points = cv2.boxPoints(min_rect)
+                            min_box_points = min_box_points.astype(int)
+
+                            hull = cv2.convexHull(contour, returnPoints = False)
+       
+
+
+                            ###### Draw Bbox ######
+                            cv2.drawContours(img_contours, [min_box_points], -1, (0, 255, 0), 3) # Min bbox
+                            cv2.circle(img_contours, (center_x, center_y), 5, (255, 0, 0), -1) # Position
+
+                            # text = [str(cntr_cnt)+', '+str(round(min_rect[-1],2))+', '+str(round(ang_mean_raw,2)) ]
+                            # cv2.putText(img_contours, text[0], (x, y), cv2.FONT_HERSHEY_PLAIN, 1.8, (255, 0, 0), 2)
+
+                            bbox_list_ori.append([x, y, w, h])
+                            lat, lon = find_Lat_Lon(center_x, center_y)
+                            bbox_list_rt.append([round(lat,6), round(lon,6), cal_angle, mag_mean]) # Lat, Lon, Yaw, Speed
+                            bbox_list.append([center_x, center_y, min_rect[1][0], min_rect[1][1], mag_mean, min_rect[-1]])
+                            cntr_cnt += 1
+
+                if self.detection_save_flg:
+                    detection_writer.writerow([current_time_sample, bbox_list_rt])
+
+                if self.socket_send_flg:
+                    # [Lat, Lon, Yaw, Speed]
+                    # [{time, id, lon, lat, alt, x_size, y_size, z_side, yaw, t1, t2, t3, t4, t5}, {}, ...]
+                    dict_data = []
+                    for id, cur_sample_data in enumerate(bbox_list_rt):
+                        current_sample_dict = dict()
+                        current_sample_dict['time'] = current_time_sample
+                        current_sample_dict['id'] = id
+                        current_sample_dict['lon'] = cur_sample_data[1]
+                        current_sample_dict['lat'] = cur_sample_data[0]
+                        current_sample_dict['alt'] = 0
+                        current_sample_dict['x_size'] = 0
+                        current_sample_dict['y_size'] = 0
+                        current_sample_dict['z_side'] = 0
+                        current_sample_dict['yaw'] = cur_sample_data[2]
+                        current_sample_dict['t1'] = 0
+                        current_sample_dict['t2'] = 0
+                        current_sample_dict['t3'] = 0
+                        current_sample_dict['t4'] = 0
+                        current_sample_dict['t5'] = time.time()
+
+                        dict_data.append(current_sample_dict)
+
+                    msg = json.dumps(dict_data)
+                    self.sock_edge.sendall(msg.encode('utf-8'))
+                    # print(msg)
+                    
+                self.current_detection = img_contours.copy()
+                ########## Detection Task ##########
+            else:
+                pass
+
+    def detection_save_fun(self):
+        if self.detection_save_flg:
+            print('Stop saving detection')
+            self.detection_file.close()
+            self.detection_save_flg = False
+            self.detection_save_btn.config(text = 'Save Detection')
+        else:
+            if not self.detection_ctr_flg:
+                tk.messagebox.showerror('Error', 'Please start detection first!')
+            else:
+                print('Save detection!')
+                self.detection_save_flg = True
+                self.detection_save_btn.config(text = 'Stop Saving')
+
+    def socket_connection_fun(self):
+        if self.socket_connection_flg:
+            self.socket_connection_flg = False
+        else:
+            self.socket_connection_flg = True
+
+            self.sock_edge = socket(AF_INET, SOCK_STREAM)
+            print('Socket Created...')
+
+            C_HOST = '169.235.21.87' # ce-cert server
+            C_M1_PORT = 28779
+
+            ADDR = (C_HOST, C_M1_PORT)
+            self.sock_edge.connect(ADDR)
+
+            print('Socket Connected to ' + ADDR[0] + ', at Port:' + str(ADDR[1]))
+
+    def socket_send_fun(self):
+        if self.socket_send_flg:
+            print('Stop sending detection')
+            self.socket_send_flg = False
+            self.socket_send.config(text = 'Send Data')
+        else:
+            if not (self.detection_ctr_flg and self.socket_connection_flg):
+                tk.messagebox.showerror('Error', 'Please start detection and connect to server first!')
+            else:
+                print('Send detection!')
+                self.socket_send_flg = True
+                self.socket_send.config(text = 'Stop Sending')
+
+    def canvas_update(self):
+        # None
+        if self.VS_var.get() == 0:
+            pass
+        # Raw
+        elif self.VS_var.get() == 1:
+            self.tmp_img = self.cv2tk(self.current_raw)
+            self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
+        # Undist
+        elif self.VS_var.get() == 2:
+            self.tmp_img = self.cv2tk(self.current_undist)
+            self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
+        # Detection
+        elif self.VS_var.get() == 3:
+            if self.detection_ctr_flg:
+                self.tmp_img = self.cv2tk(self.current_detection)
+            else:
+                self.tmp_img = self.cv2tk(self.current_undist)
+            self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
+        # BG
+        else:
+            if self.VS_zone_listbox.curselection():
+                cur_VS_zone = self.VS_zone_listbox.curselection()[0]
+            else:
+                cur_VS_zone = 0
+
+            if cur_VS_zone == 0:
+                self.tmp_img = self.cv2tk(self.current_bg)
+                self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
+            else:
+                self.tmp_img = self.cv2tk(cv2.bitwise_and(self.current_bg.copy(), 
+                                                          self.current_bg.copy(), 
+                                                          mask = mask_tuple[cur_VS_zone - 1]))
+                self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
+
+        self.after_id = self.window.after(self.gui_update_time, self.canvas_update)
+
+    def cv2tk(self, cv_img):
+        cv_img_resized = self.img_proc.img_resizer(cv_img)
+        return PIL.ImageTk.PhotoImage(image = PIL.Image.fromarray(cv_img_resized))
+
+    def gui_run(self):
+        self.window.mainloop()
+
+if __name__ == '__main__':
+    cur_app_GUI = AppGUI()
+    cur_app_GUI.gui_run()
