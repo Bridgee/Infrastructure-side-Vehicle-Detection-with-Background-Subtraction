@@ -1,6 +1,15 @@
 """
-This is the tkinter GUI for the real-time detection algorithm.
 04_10_2022
+This is the tkinter GUI for the real-time detection algorithm.
+05_09_2022
+The major functions include:
+1. Auto background initialization
+2. Manual zone-background initialization
+3. RTSP streaming and auto frame skip
+4. Dynamic background maintainnance
+5. Background subtraction-based object detection
+6. Optical-flow-based moving angle detection
+7. UDP-based result broadcasting
 """
 
 __author__ = ['Zhouqiao Zhao', 'Jiahe Cao']
@@ -23,208 +32,8 @@ import csv
 import json
 import pybgs as bgs
 
-from utilities import img_processor
 from streaming import rtsp_collector
-
-kernel = np.ones((1, 1), np.uint8)
-kernel2 = np.ones((2, 2), np.uint8)
-kernel3 = np.ones((3, 3), np.uint8)
-kernel4 = np.ones((4, 4), np.uint8)
-kernel5 = np.ones((5, 5), np.uint8)
-kernel6 = np.ones((6, 6), np.uint8)
-kernel7 = np.ones((7, 7), np.uint8)
-kernel8 = np.ones((8, 8), np.uint8)
-kernel9 = np.ones((9, 9), np.uint8)
-
-center_area = np.array([[[271,365]],[[544,551]],[[372,807]],[[103,609]]])
-
-upperright_tocenter_area = np.array([[[271,365]],[[390,490]],[[744,0]],[[590,0]]])
-upperright_backcenter_area = np.array([[[390,490]],[[544,551]],[[864,0]],[[744,0]]])
-
-lowerright_tocenter_area = np.array([[[544,551]],[[440, 695]],[[770,959]],[[959,907]]])
-lowerright_backcenter_area = np.array([[[440, 695]],[[770,959]],[[639,959]],[[372,807]]])
-
-upperleft_backcenter_area = np.array([[[271,365]],[[204,478]],[[0,320]],[[0,197]]])
-upperleft_tocenter_area = np.array([[[103,609]],[[204,478]],[[0,320]],[[0,456]]])
-
-lowerleft_backcenter_area = np.array([[[103,609]],[[225,685]],[[38,959]],[[0,859]]])
-lowerleft_tocenter_area = np.array([[[372,807]],[[225,685]],[[38,959]],[[219,959]]])
-
-old_bg_img = cv2.imread('./data/background/bg_history.png')
-mask_flow = cv2.imread('./data/masks/mask_flow.png', flags = cv2.IMREAD_GRAYSCALE)
-
-# All
-mask_all = cv2.imread('./data/masks/mask.png', flags = cv2.IMREAD_GRAYSCALE)
-_, mask_center = cv2.threshold(mask_all, 10, 255, cv2.THRESH_BINARY)
-
-# Center
-mask_center = cv2.imread('./data/masks/mask_center.png', flags = cv2.IMREAD_GRAYSCALE)
-_, mask_center = cv2.threshold(mask_center, 10, 255, cv2.THRESH_BINARY)
-
-# left down, from center to edge
-mask_ldf = cv2.imread('./data/masks/mask_ldf.png', flags = cv2.IMREAD_GRAYSCALE)
-_, mask_ldf = cv2.threshold(mask_ldf, 10, 255, cv2.THRESH_BINARY)
-
-# left down, towards center
-mask_ldt = cv2.imread('./data/masks/mask_ldt.png', flags = cv2.IMREAD_GRAYSCALE)
-_, mask_ldt = cv2.threshold(mask_ldt, 10, 255, cv2.THRESH_BINARY)
-
-# left down, towards center, left trun
-mask_ldt_l = cv2.imread('./data/masks/mask_ldt_left.png', flags = cv2.IMREAD_GRAYSCALE)
-_, mask_ldt_l = cv2.threshold(mask_ldt_l, 10, 255, cv2.THRESH_BINARY)
-
-# left upper, from center to edge
-mask_luf = cv2.imread('./data/masks/mask_luf.png', flags = cv2.IMREAD_GRAYSCALE)
-_, mask_luf = cv2.threshold(mask_luf, 10, 255, cv2.THRESH_BINARY)
-
-# left upper, towards center
-mask_lut = cv2.imread('./data/masks/mask_lut.png', flags = cv2.IMREAD_GRAYSCALE)
-_, mask_lut = cv2.threshold(mask_lut, 10, 255, cv2.THRESH_BINARY)
-
-# left upper, towards center, left trun
-mask_lut_l = cv2.imread('./data/masks/mask_lut_left.png', flags = cv2.IMREAD_GRAYSCALE)
-_, mask_lut_l = cv2.threshold(mask_lut_l, 10, 255, cv2.THRESH_BINARY)
-
-# right down, from center to edge
-mask_rdf = cv2.imread('./data/masks/mask_rdf.png', flags = cv2.IMREAD_GRAYSCALE)
-_, mask_rdf = cv2.threshold(mask_rdf, 10, 255, cv2.THRESH_BINARY)
-
-# right down, towards center
-mask_rdt = cv2.imread('./data/masks/mask_rdt.png', flags = cv2.IMREAD_GRAYSCALE)
-_, mask_rdt = cv2.threshold(mask_rdt, 10, 255, cv2.THRESH_BINARY)
-
-# right down, towards center, left trun
-mask_rdt_l = cv2.imread('./data/masks/mask_rdt_left.png', flags = cv2.IMREAD_GRAYSCALE)
-_, mask_rdt_l = cv2.threshold(mask_rdt_l, 10, 255, cv2.THRESH_BINARY)
-
-# right upper, from center to edge
-mask_ruf = cv2.imread('./data/masks/mask_ruf.png', flags = cv2.IMREAD_GRAYSCALE)
-_, mask_ruf = cv2.threshold(mask_ruf, 10, 255, cv2.THRESH_BINARY)
-# right upper, towards center
-mask_rut = cv2.imread('./data/masks/mask_rut.png', flags = cv2.IMREAD_GRAYSCALE)
-_, mask_rut = cv2.threshold(mask_rut, 10, 255, cv2.THRESH_BINARY)
-
-# right upper, towards center, left trun
-mask_rut_l = cv2.imread('./data/masks/mask_rut_left.png', flags = cv2.IMREAD_GRAYSCALE)
-_, mask_rut_l = cv2.threshold(mask_rut_l, 10, 255, cv2.THRESH_BINARY)
-
-mask_tuple = (mask_center, mask_ldf, mask_ldt, mask_ldt_l,
-              mask_luf, mask_lut, mask_lut_l,
-              mask_rdf, mask_rdt, mask_rdt_l,
-              mask_ruf, mask_rut, mask_rut_l)
-
-crop_position = [[370,100],[480,0],[480,0],[480,0],
-                [0,0],[100,0],[100,0],
-                [480,300],[480,400],[480,400],
-                [50,380],[0,300],[0,300]]
-
-area_threshold = [3000, 2895.0, 3000, 2106.357, 3000, 0, 
-                  3000, 3000, 1000, 1000, 3000, 3000, 3000]
-
-def LatLng_Dec2Rad(decNum):
-    if type(decNum) == float:
-        NumIntegral = int(decNum)
-        NumDecimal = decNum - NumIntegral
-
-        tmp = NumDecimal * 3600
-        degree = NumIntegral
-        minute = int(tmp // 60)
-        second = round(tmp - minute * 60, 2)
-        return degree, minute, second
-    if type(decNum) == tuple:
-        NumIntegral = int(decNum[0])
-        NumDecimal = decNum[0] - NumIntegral
-        tmp = NumDecimal * 3600
-        degree0 = NumIntegral
-        minute0 = int(tmp//60)
-        second0 = round(tmp - minute0*60,2)
-
-        NumIntegral = int(decNum[1])
-        NumDecimal = decNum[1] - NumIntegral
-        tmp = NumDecimal * 3600
-        degree1 = NumIntegral
-        minute1 = int(tmp//60)
-        second1= round(tmp - minute1*60,2)
-        return degree0, minute0, second0, degree1, minute1, second1
-
-def LatLng_Rad2Dec(d, m, s):
-    decNum = d + m / 60.0 + s / 3600.0
-    return decNum
-
-def divide_orientation(location):
-    if cv2.pointPolygonTest(center_area, location, False) > 0:
-        area = "center"
-        angle = False
-    elif cv2.pointPolygonTest(upperright_tocenter_area, location, False) > 0:
-        area = "upperright_tocenter"
-        angle = 123.69
-    elif cv2.pointPolygonTest(upperright_backcenter_area, location, False) > 0:
-        area = "upperright_backcenter"
-        angle = 307.51
-    elif cv2.pointPolygonTest(lowerright_tocenter_area, location, False) > 0:
-        area = "lowerright_tocenter"
-        angle = 217.66
-    elif cv2.pointPolygonTest(lowerright_backcenter_area, location, False) > 0:
-        area = "lowerright_backcenter"
-        angle = 46.85
-    elif cv2.pointPolygonTest(upperleft_tocenter_area, location, False) > 0:
-        area = "upperleft_tocenter"
-        angle = 46.85
-    elif cv2.pointPolygonTest(upperleft_backcenter_area, location, False) > 0:
-        area = "upperleft_backcenter"
-        angle = 217.66
-    elif cv2.pointPolygonTest(lowerleft_tocenter_area, location, False) > 0:
-        area = "lowerleft_tocenter"
-        angle = 307.51
-    elif cv2.pointPolygonTest(lowerleft_backcenter_area, location, False) > 0:
-        area = "lowerleft_backcenter"
-        angle = 123.69
-    else:
-        area = "not on street"
-        angle = False
-    return area, angle
-
-pixel_dis = math.sqrt((276 - 492) ** 2 + (402 - 560) ** 2)
-r = pixel_dis / (LatLng_Rad2Dec(33, 58, 32.98) - LatLng_Rad2Dec(33, 58, 31.89))
-
-def find_Lat_Lon(y, x):
-    # start_time = time.time()
-    alpha = 90 - 54.3221
-    w = 960
-    l = 960
-    centerx = 480
-    centery = 480
-    center_lat = LatLng_Rad2Dec(33, 58, 32.11) # camera lat
-    center_lon = -LatLng_Rad2Dec(117, 20, 22.77) # camera lon
-    alpha = math.radians(alpha)
-    lat_dis = abs(-math.tan(alpha) * x - y + centery + math.tan(alpha) * centerx) / math.sqrt(1 + math.tan(alpha) ** 2)
-    if lat_dis<1e-13:
-        lat_dis_t = 0
-    else:
-        lat_dis_t = lat_dis
-    lon_dis = math.sqrt((x-centerx)**2 + (y-centery)**2 - lat_dis_t**2)
-
-    angle = math.atan2(y-centery, x-centerx) + alpha
-    # print(radians(angle))
-    if 0 < angle and angle <= math.radians(90):
-        lat_dis = -1 * lat_dis
-        lon_dis = -1 * lon_dis
-        # print("--")
-    elif math.radians(90) < angle and angle <= math.radians(180):
-        lat_dis = -1 * lat_dis
-        # print("-+")
-    elif math.radians(-90)<angle and angle<=0:
-        lon_dis = -1 * lon_dis
-        # print("+-")
-    # else:
-        # print("++")
-    lat = lat_dis / r + center_lat
-    # print(LatLng_Dec2Rad(lat))
-    if center_lon<= 0:
-        lon = 2*math.asin(math.sin(lon_dis/(2*r)) / math.cos(math.radians(lat)) ) + center_lon
-    else:
-        lon = -2*math.asin(math.sin(lon_dis/(2*r)) / math.cos(math.radians(lat)) ) + center_lon
-    return lat, lon # west semisphere
+from config import *
 
 ######################## BgOpticalFlowTrigger #########################
 class BgOpticalFlowTrigger():
@@ -433,18 +242,16 @@ def zone_initializing_process(cur_frame, trigger, of_on, var_on, sift_on, old_bg
 
 class AppGUI():
     def __init__(self):
-        # ImgProcessor
-        self.img_proc = img_processor.ImgProcessor()
+        # Img
         self.frame_receive = False
-        self.tmp_img = None
         self.current_raw = None
         self.current_undist = None
         self.current_detection = None
+        self.tmp_img = None
 
         # Canvas Update Parameters
         self.gui_update_time = 200
-        self.after_id = None
-        self.tmp_img = None
+        self.after_id = None\
 
         # Streaming Info
         self.streaming_max_delay = 0.5
@@ -456,8 +263,7 @@ class AppGUI():
         self.ten_sec_fps = 0
 
         # BG Parameters
-        current_bg_name = './data/background/bg_default.png'
-        self.current_bg = self.img_proc.BGR2RGB(self.img_proc.img_loader(current_bg_name))
+        self.current_bg = cv2.cvtColor(cv2.imread('./data/background/bg_default.png'), cv2.COLOR_BGR2RGB)
         
         ############################# GUI #############################
         # Main Window
@@ -674,8 +480,8 @@ class AppGUI():
                 if cur_time - self.streaming_start_time < 10:
                     if self.total_frame_cnt > (cur_time - self.streaming_start_time - self.streaming_max_delay) * 10:
                         ####### Update Current Image #######
-                        self.current_raw = self.img_proc.get_raw(frame)
-                        self.current_undist = self.img_proc.get_undist(frame)
+                        self.current_raw = frame.copy()
+                        self.current_undist = cv2.fisheye.undistortImage(frame, K = K, D = D, Knew = Knew)
                         self.update_frame_cnt += 1
 
                         # Update Streaming Info on GUI    
@@ -685,15 +491,17 @@ class AppGUI():
                         # Save Raw and Undist
                         if self.streaming_save_flg:
                             now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
-                            self.img_proc.img_saver(self.img_proc.RGB2BGR(self.current_raw), '../data/raw/', now)
-                            self.img_proc.img_saver(self.img_proc.RGB2BGR(self.current_undist), '../data/undist/', now)
+                            cv2.imwrite('./data/raw/' + now + '.png',
+                                        cv2.cvtColor(self.current_raw, cv2.COLOR_RGB2BGR))
+                            cv2.imwrite('./data/undist/' + now + '.png',
+                                        cv2.cvtColor(self.current_undist, cv2.COLOR_RGB2BGR))
                     else:
                         print('### Skip frame, updated frame in 10s:', self.total_frame_cnt)
                 else:
                     if len(self.ten_sec_frame_queue)  > (10 - self.streaming_max_delay) * 10:
                         ####### Update Current Image #######
-                        self.current_raw = self.img_proc.get_raw(frame)
-                        self.current_undist = self.img_proc.get_undist(frame)
+                        self.current_raw = frame.copy()
+                        self.current_undist = cv2.fisheye.undistortImage(frame, K = K, D = D, Knew = Knew)
                         self.update_frame_cnt += 1
 
                         # Update Streaming Info on GUI    
@@ -703,8 +511,10 @@ class AppGUI():
                         # Save Raw and Undist
                         if self.streaming_save_flg:
                             now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
-                            self.img_proc.img_saver(self.img_proc.RGB2BGR(self.current_raw), '../data/raw/', now)
-                            self.img_proc.img_saver(self.img_proc.RGB2BGR(self.current_undist), '../data/undist/', now)
+                            cv2.imwrite('./data/raw/' + now + '.png',
+                                        cv2.cvtColor(self.current_raw, cv2.COLOR_RGB2BGR))
+                            cv2.imwrite('./data/undist/' + now + '.png',
+                                        cv2.cvtColor(self.current_undist, cv2.COLOR_RGB2BGR))
                     else:
                         print('### Skip frame, updated frame in 10s:', len(self.ten_sec_frame_queue))
             else:
@@ -740,7 +550,6 @@ class AppGUI():
 
         number_of_zone = 13
         frame_idx = 0
-        frame_num = 1000
 
         ##### Shared Memory #####
         cur_frame_shared_memory = shared_memory.SharedMemory(create = True, size = 960 * 960 * 3)
@@ -776,7 +585,6 @@ class AppGUI():
 
         while 1:
             frame_idx += 1
-            # if frame_idx >= frame_num:
             if time.time() - start_time > running_time:
                 of_event.set()
                 shutdown_event.set()
@@ -831,7 +639,8 @@ class AppGUI():
 
         self.current_bg = bg_final
         now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
-        self.img_proc.img_saver(self.img_proc.RGB2BGR(self.current_bg), './data/background/', now)
+        cv2.imwrite('./data/background/' + now + '.png',
+                    cv2.cvtColor(self.current_bg, cv2.COLOR_RGB2BGR))
 
         self.zone_update_time_entry.config({'background': 'green'})
         time.sleep(1)
@@ -867,7 +676,6 @@ class AppGUI():
 
         number_of_zone = 13
         frame_idx = 0
-        frame_num = 1000
 
         ##### Shared Memory #####
         cur_frame_shared_memory = shared_memory.SharedMemory(create = True, size = 960 * 960 * 3)
@@ -902,7 +710,6 @@ class AppGUI():
 
         while 1:
             frame_idx += 1
-            # if frame_idx >= frame_num:
             if time.time() - start_time > running_time:
                 of_event.set()
                 shutdown_event.set()
@@ -956,7 +763,8 @@ class AppGUI():
         self.current_bg = cv2.add(current_bg_no_zone, bg_final)
 
         now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
-        self.img_proc.img_saver(self.img_proc.RGB2BGR(self.current_bg), './data/background/', now)
+        cv2.imwrite('./data/background/' + now + '.png',
+                    cv2.cvtColor(self.current_bg, cv2.COLOR_RGB2BGR))
 
         self.zone_update_time_entry.config({'background': 'green'})
         self.zone_id_entry.config({'background': 'green'})
@@ -967,8 +775,8 @@ class AppGUI():
 
     def bg_load(self):
         filetype = (('JPG', '*.jpg'), ('PNG', '*.png'), )
-        current_bg_name = fd.askopenfilename(title = 'Load a background', initialdir='../data/', filetypes = filetype)
-        self.current_bg = self.img_proc.BGR2RGB(self.img_proc.img_loader(current_bg_name))
+        current_bg_name = fd.askopenfilename(title = 'Load a background', initialdir='./data/', filetypes = filetype)
+        self.current_bg = cv2.cvtColor(cv2.imread(current_bg_name), cv2.COLOR_BGR2RGB)
         print('Load:')
         print(current_bg_name)
 
@@ -1024,7 +832,8 @@ class AppGUI():
                 img_diff = cv2.absdiff(bg_buffer_2, current_undist_sample)
 
                 # now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
-                # self.img_proc.img_saver(cv2.cvtColor(img_diff, cv2.COLOR_RGB2BGR), './debug/', now)
+                # cv2.imwrite('./debug/' + now + '.png',
+                #             cv2.cvtColor(img_diff, cv2.COLOR_RGB2BGR))
 
                 ##### diff -> normal -> gray -> morph -> contour -> not -> & mask
                 img_diff = img_diff / 16
@@ -1049,12 +858,14 @@ class AppGUI():
                 frame_bg = cv2.bitwise_and(mask_all, img_bg_mask)
 
                 # now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
-                # self.img_proc.img_saver(cv2.cvtColor(frame_bg, cv2.COLOR_RGB2BGR), './debug/', now)
+                # cv2.imwrite('./debug/' + now + '.png',
+                #             cv2.cvtColor(frame_bg, cv2.COLOR_RGB2BGR))
 
                 current_frame_renew = cv2.bitwise_and(current_undist_sample, current_undist_sample, mask = frame_bg)
 
                 # now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
-                # self.img_proc.img_saver(cv2.cvtColor(current_frame_renew, cv2.COLOR_RGB2BGR), './debug/', now)
+                # cv2.imwrite('./debug/' + now + '.png',
+                #             cv2.cvtColor(current_frame_renew, cv2.COLOR_RGB2BGR))
 
                 bg_renew = cv2.addWeighted(current_frame_renew, 
                                            ratio, 
@@ -1063,7 +874,8 @@ class AppGUI():
                                            0)
 
                 # now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
-                # self.img_proc.img_saver(cv2.cvtColor(bg_renew, cv2.COLOR_RGB2BGR), './debug/', now)
+                # cv2.imwrite('./debug/' + now + '.png',
+                #             cv2.cvtColor(bg_renew, cv2.COLOR_RGB2BGR))
 
                 if bg_maintain_cnt % 2 == 0:
                     bg_keep = cv2.bitwise_and(bg_buffer, bg_buffer, mask = img_bg_opened)
@@ -1115,7 +927,8 @@ class AppGUI():
 
                 ##### Output #####
                 # now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
-                # self.img_proc.img_saver(cv2.cvtColor(bg_buffer_2, cv2.COLOR_RGB2BGR), './data/background/', now)
+                # cv2.imwrite('./data/background/' + now + '.png',
+                #             cv2.cvtColor(bg_buffer_2, cv2.COLOR_RGB2BGR))
                 self.current_bg = bg_buffer_2
                 ##### Output #####
 
@@ -1471,9 +1284,6 @@ class AppGUI():
             self.sock_edge = socket(AF_INET, SOCK_STREAM)
             print('Socket Created...')
 
-            C_HOST = '169.235.21.87' # ce-cert server
-            C_M1_PORT = 28779
-
             ADDR = (C_HOST, C_M1_PORT)
             self.sock_edge.connect(ADDR)
 
@@ -1498,18 +1308,21 @@ class AppGUI():
             pass
         # Raw
         elif self.VS_var.get() == 1:
-            self.tmp_img = self.cv2tk(self.current_raw)
+            self.tmp_img = self.cv2tk(self.current_raw.copy())
             self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
         # Undist
         elif self.VS_var.get() == 2:
-            self.tmp_img = self.cv2tk(self.current_undist)
+            self.tmp_img = self.cv2tk(self.current_undist.copy())
             self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
         # Detection
         elif self.VS_var.get() == 3:
             if self.detection_ctr_flg:
-                self.tmp_img = self.cv2tk(self.current_detection)
+                if self.current_detection is None:
+                    self.tmp_img = self.cv2tk(self.current_undist.copy())
+                else:
+                    self.tmp_img = self.cv2tk(self.current_detection.copy())
             else:
-                self.tmp_img = self.cv2tk(self.current_undist)
+                self.tmp_img = self.cv2tk(self.current_undist.copy())
             self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
         # BG
         else:
@@ -1519,18 +1332,18 @@ class AppGUI():
                 cur_VS_zone = 0
 
             if cur_VS_zone == 0:
-                self.tmp_img = self.cv2tk(self.current_bg)
+                self.tmp_img = self.cv2tk(self.current_bg.copy())
                 self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
             else:
                 self.tmp_img = self.cv2tk(cv2.bitwise_and(self.current_bg.copy(), 
-                                                          self.current_bg.copy(), 
-                                                          mask = mask_tuple[cur_VS_zone - 1]))
+                                                     self.current_bg.copy(), 
+                                                     mask = mask_tuple[cur_VS_zone - 1]))
                 self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
 
         self.after_id = self.window.after(self.gui_update_time, self.canvas_update)
 
     def cv2tk(self, cv_img):
-        cv_img_resized = self.img_proc.img_resizer(cv_img)
+        cv_img_resized = cv2.resize(cv_img, dsize = None, fx = scale_x, fy = scale_y)
         return PIL.ImageTk.PhotoImage(image = PIL.Image.fromarray(cv_img_resized))
 
     def gui_run(self):
