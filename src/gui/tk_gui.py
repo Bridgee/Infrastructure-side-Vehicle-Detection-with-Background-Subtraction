@@ -29,6 +29,7 @@ import numpy as np
 import cv2
 import queue
 import math
+from math import atan2, pi
 import csv
 import json
 import pybgs as bgs
@@ -1036,7 +1037,7 @@ class AppGUI():
         self.detection_file = open('./data/results/detection_'+now + '.csv', 'w')
         detection_writer = csv.writer(self.detection_file)
         detection_writer.writerow(['Time', 'Detection (Lat, Lon, Yaw, Speed)'])
-
+        of_resize = 4
         while self.detection_ctr_flg:
             if self.update_frame_cnt > update_frame_cnt_last:
                 detection_cnt += 1
@@ -1061,12 +1062,12 @@ class AppGUI():
                     init_flag = False
                     img_prev_gray = cv2.cvtColor(current_bg_sample, cv2.COLOR_BGR2GRAY)
                     img_prev_gray = cv2.resize(img_prev_gray, 
-                                               (int(width / 4),int(height / 4)),
+                                               (int(width / of_resize),int(height / of_resize)),
                                                interpolation = cv2.INTER_AREA)
                     continue
                 else:
                     img_undist_low = cv2.resize(current_undist_sample,
-                                                (int(width / 4),int(height / 4)),
+                                                (int(width / of_resize),int(height / of_resize)),
                                                 interpolation=cv2.INTER_AREA)
                     img_showof = img_undist_low.copy()
 
@@ -1082,8 +1083,9 @@ class AppGUI():
                 mag = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U) #  mag shape 960 1280
 
                 mag = cv2.resize(mag, (int(width), int(height)), interpolation = cv2.INTER_AREA)
+                _, mag_th = cv2.threshold(mag, 20, 255, cv2.THRESH_BINARY)
                 ang = cv2.resize(ang, (int(width), int(height)), interpolation = cv2.INTER_AREA)
-
+                # cv2.imwrite('./data/ang/'+str(detection_cnt)+'_ang'+'.png',ang)
                 # y, x = np.mgrid[10/ 2:960:10, 10/ 2:960:10].reshape(2,-1).astype(int)
                 # fx,fy =flow[y,x].T
                 # lines = np.vstack([x,y,x+fx,y+fy]).T.reshape(-1,2,2)
@@ -1093,7 +1095,7 @@ class AppGUI():
                 #     if l[0][0] - l[1][0] >1 or l[0][1] - l[1][1]>1:
                 #         line.append(l)
                 # cv2.polylines(img_showof, line, 0, (0,255,255))
-                # cv2.imwrite('./debug/of/'+str(self.update_frame_cnt)+'.png', img_showof)
+                # cv2.imwrite('./data/ang/'+str(detection_cnt)+'.png', img_showof)
 
                 
                 ##### Vehicle Contour
@@ -1183,19 +1185,19 @@ class AppGUI():
                                     center_y = sub_y + int(sub_h/2) + y
                                     _, cal_angle = divide_orientation([center_x, center_y])
                                     if not cal_angle:
-                                        cal_angle = ang_sent
+                                        cal_angle = ang_mean_raw
                                     ang_mean = cal_angle + 90
 
                                     if mag_mean>20: # otherwise static vehicle
                                         temp = (min_rect[0], (np.min(min_rect[1]), np.max(min_rect[1])), ang_mean)
                                         min_rect = temp
-                                    elif bbox_list_last.size:# use nearest point angular in the last frame
-                                        distance_last_frame = np.power(bbox_list_last[:,:2] - [min_rect[0][0]+x, min_rect[0][1]+y], 2)
-                                        nearest_point_id = np.argmin(np.sum(distance_last_frame,axis = 1))
-                                        ang_mean = bbox_list_last[nearest_point_id,-1]
-                                        temp = (min_rect[0], (np.min(min_rect[1]), np.max(min_rect[1])), ang_mean)
-                                        # temp = (min_rect[0], min_rect[1], ang_mean)
-                                        min_rect = temp
+                                    # elif bool(len(bbox_list_last)):# use nearest point angular in the last frame
+                                    #     distance_last_frame = np.power(bbox_list_last[:][:2] - np.array([[min_rect[0][0], min_rect[0][1]]]).T, 2)
+                                    #     nearest_point_id = np.argmin(np.sum(distance_last_frame,axis = 1))
+                                    #     ang_mean = bbox_list_last[nearest_point_id,-1]
+                                    #     temp = (min_rect[0], (np.min(min_rect[1]), np.max(min_rect[1])), ang_mean)
+                                    #     # temp = (min_rect[0], min_rect[1], ang_mean)
+                                    #     min_rect = temp
                                     else: # if there is no bblist_last
                                         if min_rect[1][0] > np.min(min_rect[1]):
                                             ang_mean = min_rect[-1]+90
@@ -1215,21 +1217,26 @@ class AppGUI():
                                     ###### Draw Bbox ######
                                     cv2.drawContours(img_contours, [min_box_points], -1, (0, 255, 0), 3) # Min bbox
                                     cv2.circle(img_contours, (center_x, center_y), 5, (255, 0, 0), -1)
-
-                                    # text = ['***' + str(cntr_cnt)+', '+str(round(min_rect[-1],2))+', '+str(round(ang_mean_raw,2))]
-                                    # cv2.putText(img_contours, text[0], (sub_x + x, sub_y + y), cv2.FONT_HERSHEY_PLAIN, 1.6, (0, 0, 255), 2)
+                                    _, center_flag = divide_orientation([center_x, center_y]) # if the vehicles are within center area, display the angles
+                                    if not center_flag:
+                                        text = ['***' + str(cntr_cnt)+', '+str(round(min_rect[-1],2))+', '+str(round(ang_mean_raw,2))]
+                                        cv2.putText(img_contours, text[0], (sub_x + x, sub_y + y), cv2.FONT_HERSHEY_PLAIN, 1.6, (0, 0, 255), 2)
 
 
                                     bbox_list_ori.append([new_x, new_y, sub_w, sub_h])
                                     lat, lon = find_Lat_Lon(center_x, center_y)
                                     bbox_list_rt.append([round(lat,6), round(lon,6), cal_angle, mag_mean])
-                                    bbox_list.append([center_x, center_y, min_rect[1][0], min_rect[1][1], mag_mean, min_rect[-1]])
+                                    distance = np.power(480-center_x,2) + np.power(480-center_y,2)
+                                    bbox_list.append([center_x, center_y, min_rect[1][0], min_rect[1][1], mag_mean, min_rect[-1], distance])
                                     cntr_cnt += 1
                         else:
                             ang_mask = np.zeros(ang.shape, np.uint8)
+                            mag_mask = np.zeros(ang.shape, np.uint8)
                             cv2.drawContours(ang_mask, [contour], -1, 255, thickness=-1)
-                            ang_mean_raw = cv2.mean(cv2.bitwise_and(ang,ang,mask = ang_mask),  mask=ang_mask)[0] # *180/np.pi
-                            # ang_mean_img = cv2.bitwise_and(ang,ang,mask = ang_mask)
+                            ang_mask = cv2.bitwise_and(ang_mask,ang_mask,mask = mag_th)
+                            
+                            ang_mean_img = cv2.bitwise_and(ang,ang,mask = ang_mask)
+                            ang_mean_raw = cv2.mean(ang_mean_img,  mask=ang_mask)[0] # *180/np.pi
                             # ang_mean_raw = ang_mean_img.max()
                             mag_mean = cv2.mean(cv2.bitwise_and(mag,mag,mask = ang_mask),  mask=ang_mask)[0]
                             ori_ang = min_rect[2]
@@ -1240,22 +1247,43 @@ class AppGUI():
                             center_y = y + int(h/2)
                             _, cal_angle = divide_orientation([center_x, center_y])
                             if not cal_angle:
-                                cal_angle = ang_sent
+                                cv2.imwrite('./data/ang/'+str(detection_cnt)+'_'+str(cntr_cnt)+'.png',ang_mean_img)
+                                # cal_angle = ang_mean_raw
+                                if min_rect[1][0] > np.min(min_rect[1]):
+                                    cal_angle = min_rect[-1]
+                                else:
+                                    cal_angle = min_rect[-1] - 90
+
+                                if bool(len(bbox_list_last)):
+                                    distance_last_frame = np.power(bbox_list_last[:][:2] - np.array([[center_x, center_y]]).T, 2)
+                                    nearest_point_id = np.argmin(np.sum(distance_last_frame,axis = 1))
+                                    last_ang = bbox_list_last[nearest_point_id,-1]
+                                    # cal_angle = (atan2(bbox_list_last[nearest_point_id,1]-center_y, bbox_list_last[nearest_point_id,0]-center_x)*180/pi+360)%360
+                                    # if abs(last_ang - cal_angle) > 50:
+                                    #     cal_angle = last_ang
+                                    
+                                
                             ang_mean = cal_angle + 90
+
+                            # temp = (min_rect[0], (np.min(min_rect[1]), np.max(min_rect[1])), ang_mean)
+                            # min_rect = temp
+                            
                             if mag_mean > 20: # otherwise static vehicle
                                 temp = (min_rect[0], (np.min(min_rect[1]), np.max(min_rect[1])), ang_mean)
+                                mov_flag = 1
                                 min_rect = temp
-                            elif bbox_list_last.size:# use nearest point angular in the last frame
-                                distance_last_frame = np.power(bbox_list_last[:,:2] - [min_rect[0][0], min_rect[0][1]], 2)
-                                nearest_point_id = np.argmin(np.sum(distance_last_frame,axis = 1))
-                                ang_mean = bbox_list_last[nearest_point_id,-1]
+                            # elif bool(len(bbox_list_last)):# use nearest point angular in the last frame
+                            #     distance_last_frame = np.power(bbox_list_last[:][:2] - np.array([[min_rect[0][0], min_rect[0][1]]]).T, 2)
+                            #     nearest_point_id = np.argmin(np.sum(distance_last_frame,axis = 1))
+                            #     ang_mean = bbox_list_last[nearest_point_id,-1]
                                 
-                                temp = (min_rect[0], (np.min(min_rect[1]), np.max(min_rect[1])), ang_mean)
-                                # temp = (min_rect[0], min_rect[1], ang_mean)
-                                min_rect = temp
+                            #     temp = (min_rect[0], (np.min(min_rect[1]), np.max(min_rect[1])), ang_mean)
+                            #     # temp = (min_rect[0], min_rect[1], ang_mean)
+                            #     min_rect = temp
                             else: # if there is no bblist_last
                                 if min_rect[1][0] > np.min(min_rect[1]):
                                     ang_mean = min_rect[-1] + 90
+                                mov_flag = 0
                                 temp = (min_rect[0], (np.min(min_rect[1]), np.max(min_rect[1])), ang_mean)
                                 min_rect = temp
                             
@@ -1272,15 +1300,23 @@ class AppGUI():
                             ###### Draw Bbox ######
                             cv2.drawContours(img_contours, [min_box_points], -1, (0, 255, 0), 3) # Min bbox
                             cv2.circle(img_contours, (center_x, center_y), 5, (255, 0, 0), -1) # Position
-
-                            # text = [str(cntr_cnt)+', '+str(round(min_rect[-1],2))+', '+str(round(ang_mean_raw,2)) ]
-                            # cv2.putText(img_contours, text[0], (x, y), cv2.FONT_HERSHEY_PLAIN, 1.8, (255, 0, 0), 2)
+                            _, center_flag = divide_orientation([center_x, center_y]) # if the vehicles are within center area, display the angles
+                            if not center_flag:
+                                text = [str(mov_flag)+', '+str(round(min_rect[-1],2))+', '+str(round(cal_angle,2)) ] # +str(bbox_list_last[nearest_point_id,1]-center_y)+','+str(bbox_list_last[nearest_point_id,0]-center_x)
+                                cv2.putText(img_contours, text[0], (x, y), cv2.FONT_HERSHEY_PLAIN, 1.8, (255, 0, 0), 2)
 
                             bbox_list_ori.append([x, y, w, h])
                             lat, lon = find_Lat_Lon(center_x, center_y)
                             bbox_list_rt.append([round(lat,6), round(lon,6), cal_angle, mag_mean]) # Lat, Lon, Yaw, Speed
-                            bbox_list.append([center_x, center_y, min_rect[1][0], min_rect[1][1], mag_mean, min_rect[-1]])
+                            distance = np.power(480-center_x,2) + np.power(480-center_y,2)
+                            bbox_list.append([center_x, center_y, min_rect[1][0], min_rect[1][1], mag_mean, min_rect[-1],distance])
                             cntr_cnt += 1
+                bbox_list = np.array(bbox_list)
+                # sort the bound_box according to the distance to center
+                bbox_index = np.argsort(bbox_list[:,-1])
+                bbox_list = bbox_list[bbox_index]
+                
+                bbox_list_last = bbox_list.copy()
 
                 if self.detection_save_flg:
                     detection_writer.writerow([current_time_sample, bbox_list_rt])
@@ -1324,6 +1360,7 @@ class AppGUI():
                     self.sock_edge.sendall(msg.encode('utf-8'))
                     
                 self.current_detection = img_contours.copy()
+                del ang
                 ########## Detection Task ##########
             else:
                 pass
@@ -1414,6 +1451,7 @@ class AppGUI():
             if cur_VS_zones[0] == 0:
                 self.tmp_img = self.cv2tk(self.current_bg.copy())
                 self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
+                # self.zone_id_entry.config(textvariable='all')
             else:
                 self.tmp_img = np.zeros((960, 960, 3), dtype = 'uint8')
                 for cur_VS_zone in cur_VS_zones:                                        
@@ -1423,6 +1461,7 @@ class AppGUI():
                                                         mask = mask_tuple[cur_VS_zone - 1]))
                 self.tmp_img = self.cv2tk(self.tmp_img)
                 self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
+                # self.zone_id_entry.setvar(str(cur_VS_zones))
 
         self.after_id = self.window.after(self.gui_update_time, self.canvas_update)
 
