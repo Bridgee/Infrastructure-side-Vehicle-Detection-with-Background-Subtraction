@@ -20,6 +20,7 @@ from socket import *
 import tkinter as tk
 import PIL.Image, PIL.ImageTk
 from tkinter import filedialog as fd
+from tkinter import messagebox
 import time
 from datetime import datetime
 import threading
@@ -398,8 +399,8 @@ class AppGUI():
         self.VS_zone_var = tk.StringVar()
         self.VS_zone_var.set(('All', 'Zone 0', 'Zone 1', 'Zone 2', 'Zone 3', 'Zone 4', 
                               'Zone 5', 'Zone 6', 'Zone 7', 'Zone 8', 'Zone 9', 'Zone 10', 'Zone 11', 'Zone 12'))
-        # self.VS_zone_listbox = tk.Listbox(self.window, listvariable = self.VS_zone_var, selectmode = 'multiple')
-        self.VS_zone_listbox = tk.Listbox(self.window, listvariable = self.VS_zone_var)
+        self.VS_zone_listbox = tk.Listbox(self.window, listvariable = self.VS_zone_var, selectmode = 'multiple')
+        # self.VS_zone_listbox = tk.Listbox(self.window, listvariable = self.VS_zone_var)
         self.VS_zone_listbox.select_set(0)
         self.VS_zone_listbox.place(relx = 0.01, rely = 0.6, relheight = 0.18, relwidth = 0.1, anchor = tk.NW)
 
@@ -485,7 +486,7 @@ class AppGUI():
             self.streaming_save_btn.config(text = 'Save Streaming')
         else:
             if not self.streaming_ctr_flg:
-                tk.messagebox.showerror('Error', 'Please start streaming first!')
+                messagebox.showerror('Error', 'Please start streaming first!')
             else:
                 print('Save raw!')
                 self.streaming_save_flg = True
@@ -564,7 +565,7 @@ class AppGUI():
 
     def auto_init_fun(self):
         if not self.streaming_ctr_flg:
-            tk.messagebox.showerror('Error', 'Please start streaming first!')
+            messagebox.showerror('Error', 'Please start streaming first!')
         else:
             running_time = self.zone_update_time_entry.get()
             if running_time.isnumeric():
@@ -683,7 +684,7 @@ class AppGUI():
 
     def manual_init_fun(self):
         if not self.streaming_ctr_flg:
-            tk.messagebox.showerror('Error', 'Please start streaming first!')
+            messagebox.showerror('Error', 'Please start streaming first!')
         else:
             running_time = self.zone_update_time_entry.get()
             if running_time.isnumeric():
@@ -821,7 +822,7 @@ class AppGUI():
             self.bg_maintain_btn.config(text = 'BG Maintaining')
         else:
             if not self.streaming_ctr_flg:
-                tk.messagebox.showerror('Error', 'Please start streaming first!')
+                messagebox.showerror('Error', 'Please start streaming first!')
             else:
                 print('Start BG maintain...')
                 self.bg_maintain_flg = True
@@ -993,7 +994,7 @@ class AppGUI():
             self.bg_save_btn.config(text = 'Save BG')
         else:
             if not self.bg_maintain_flg:
-                tk.messagebox.showerror('Error', 'Please start bg maintain first!')
+                messagebox.showerror('Error', 'Please start bg maintain first!')
             else:
                 print('Save bg!')
                 self.bg_save_flg = True
@@ -1009,7 +1010,7 @@ class AppGUI():
             self.detection_param_entry.config({'background': 'white'})
         else:
             if not self.streaming_ctr_flg:
-                tk.messagebox.showerror('Error', 'Please start streaming first!')
+                messagebox.showerror('Error', 'Please start streaming first!')
             else:
                 print('Start detection...')
                 self.detection_ctr_flg = True
@@ -1335,7 +1336,7 @@ class AppGUI():
             self.detection_save_btn.config(text = 'Save Detection')
         else:
             if not self.detection_ctr_flg:
-                tk.messagebox.showerror('Error', 'Please start detection first!')
+                messagebox.showerror('Error', 'Please start detection first!')
             else:
                 print('Save detection!')
                 self.detection_save_flg = True
@@ -1348,7 +1349,7 @@ class AppGUI():
             self.save_dt_img_btn.config(text = 'Save Detect Img')
         else:
             if not self.detection_ctr_flg:
-                tk.messagebox.showerror('Error', 'Please start detection first!')
+                messagebox.showerror('Error', 'Please start detection first!')
             else:
                 print('Save detection img!')
                 self.save_dt_img_flg = True
@@ -1375,7 +1376,7 @@ class AppGUI():
             self.socket_send.config(text = 'Send Data')
         else:
             if not (self.detection_ctr_flg and self.socket_connection_flg):
-                tk.messagebox.showerror('Error', 'Please start detection and connect to server first!')
+                messagebox.showerror('Error', 'Please start detection and connect to server first!')
             else:
                 print('Send detection!')
                 self.socket_send_flg = True
@@ -1406,17 +1407,21 @@ class AppGUI():
         # BG
         else:
             if self.VS_zone_listbox.curselection():
-                cur_VS_zone = self.VS_zone_listbox.curselection()[0]
+                cur_VS_zones = self.VS_zone_listbox.curselection()
             else:
-                cur_VS_zone = 0
+                cur_VS_zones = (0, )
 
-            if cur_VS_zone == 0:
+            if cur_VS_zones[0] == 0:
                 self.tmp_img = self.cv2tk(self.current_bg.copy())
                 self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
             else:
-                self.tmp_img = self.cv2tk(cv2.bitwise_and(self.current_bg.copy(), 
-                                                     self.current_bg.copy(), 
-                                                     mask = mask_tuple[cur_VS_zone - 1]))
+                self.tmp_img = np.zeros((960, 960, 3), dtype = 'uint8')
+                for cur_VS_zone in cur_VS_zones:                                        
+                    self.tmp_img = cv2.add(self.tmp_img, 
+                                        cv2.bitwise_and(self.current_bg.copy(), 
+                                                        self.current_bg.copy(), 
+                                                        mask = mask_tuple[cur_VS_zone - 1]))
+                self.tmp_img = self.cv2tk(self.tmp_img)
                 self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
 
         self.after_id = self.window.after(self.gui_update_time, self.canvas_update)
