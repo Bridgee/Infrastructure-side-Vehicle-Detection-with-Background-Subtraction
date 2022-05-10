@@ -347,7 +347,7 @@ class AppGUI():
 
         # Detection
         self.detection_param_var = tk.StringVar()
-        self.detection_param_var.set('Detection Param')
+        self.detection_param_var.set('Parameters')
         self.detection_param_entry = tk.Entry(self.window, textvariable = self.detection_param_var, show = None, font = ('Arial', 8))
         self.detection_param_entry.place(relx = 0.01, rely = 0.38, relheight = 0.05, relwidth = 0.21, anchor = tk.NW)
 
@@ -363,27 +363,24 @@ class AppGUI():
         self.VS_var = tk.IntVar()
         self.VS_var.set(1)
 
-        self.VS_none = tk.Radiobutton(self.window, text = 'None', variable = self.VS_var, value = 0)
-        self.VS_none.place(relx = 0.01, rely = 0.6, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
-
         self.VS_raw = tk.Radiobutton(self.window, text = 'Raw', variable = self.VS_var, value = 1)
-        self.VS_raw.place(relx = 0.12, rely = 0.6, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+        self.VS_raw.place(relx = 0.12, rely = 0.7, relheight = 0.04, relwidth = 0.1, anchor = tk.NW)
 
         self.VS_undist = tk.Radiobutton(self.window, text = 'Undist', variable = self.VS_var, value = 2)
-        self.VS_undist.place(relx = 0.01, rely = 0.65, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+        self.VS_undist.place(relx = 0.12, rely = 0.74, relheight = 0.04, relwidth = 0.1, anchor = tk.NW)
 
         self.VS_detection = tk.Radiobutton(self.window, text = 'Detection', variable = self.VS_var, value = 3)
-        self.VS_detection.place(relx = 0.12, rely = 0.65, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+        self.VS_detection.place(relx = 0.12, rely = 0.78, relheight = 0.04, relwidth = 0.1, anchor = tk.NW)
         
         self.VS_BG = tk.Radiobutton(self.window, text = 'Dynamic BG', variable = self.VS_var, value = 4)
-        self.VS_BG.place(relx = 0.12, rely = 0.78, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+        self.VS_BG.place(relx = 0.12, rely = 0.82, relheight = 0.04, relwidth = 0.1, anchor = tk.NW)
 
         self.VS_zone_var = tk.StringVar()
         self.VS_zone_var.set(('All', 'Zone 0', 'Zone 1', 'Zone 2', 'Zone 3', 'Zone 4', 
                               'Zone 5', 'Zone 6', 'Zone 7', 'Zone 8', 'Zone 9', 'Zone 10', 'Zone 11', 'Zone 12'))
-        self.VS_zone_listbox = tk.Listbox(self.window, listvariable = self.VS_zone_var)
+        self.VS_zone_listbox = tk.Listbox(self.window, listvariable = self.VS_zone_var, selectmode = 'multiple')
         self.VS_zone_listbox.select_set(0)
-        self.VS_zone_listbox.place(relx = 0.01, rely = 0.7, relheight = 0.2, relwidth = 0.1, anchor = tk.NW)
+        self.VS_zone_listbox.place(relx = 0.01, rely = 0.7, relheight = 0.18, relwidth = 0.1, anchor = tk.NW)
 
         # Communication
         self.socket_connection_flg = False

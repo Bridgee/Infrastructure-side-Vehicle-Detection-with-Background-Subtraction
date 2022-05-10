@@ -1,5 +1,5 @@
 """
-This is the tkinter GUI for the real-time detection algorithm
+This is the RTSP streaming connector to get the real-time surveillance video
 """
 
 __author__ = 'Zhouqiao Zhao'

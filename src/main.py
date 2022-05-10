@@ -2,7 +2,7 @@
 Run this scipt to start the app.
 """
 
-__author__ = ['Zhouqiao Zhao', 'Jiahe Cao']
+__author__ = 'Zhouqiao Zhao'
 
 from gui import tk_gui
 
