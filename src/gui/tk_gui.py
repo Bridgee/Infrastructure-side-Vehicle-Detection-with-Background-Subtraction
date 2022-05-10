@@ -1307,8 +1307,8 @@ class AppGUI():
                         current_sample_dict['lon'] = cur_sample_data[1]
                         current_sample_dict['lat'] = cur_sample_data[0]
                         current_sample_dict['alt'] = 0
-                        current_sample_dict['x_size'] = 0
-                        current_sample_dict['y_size'] = 0
+                        current_sample_dict['x_size'] = 120
+                        current_sample_dict['y_size'] = 120
                         current_sample_dict['z_side'] = 0
                         current_sample_dict['yaw'] = cur_sample_data[2]
                         current_sample_dict['t1'] = 0
@@ -1320,8 +1320,8 @@ class AppGUI():
                         dict_data.append(current_sample_dict)
 
                     msg = json.dumps(dict_data)
+                    msg = msg +  '\n'
                     self.sock_edge.sendall(msg.encode('utf-8'))
-                    # print(msg)
                     
                 self.current_detection = img_contours.copy()
                 ########## Detection Task ##########
