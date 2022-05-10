@@ -264,6 +264,8 @@ class AppGUI():
 
         # BG Parameters
         self.current_bg = cv2.cvtColor(cv2.imread('./data/background/bg_default.png'), cv2.COLOR_BGR2RGB)
+
+        self.detection_file = None
         
         ############################# GUI #############################
         # Main Window
@@ -344,52 +346,71 @@ class AppGUI():
         self.bg_maintain_flg = False
         self.bg_maintain_btn = tk.Button(self.window, text = 'BG Maintaining', command = self.bg_maintain_fun)
         self.bg_maintain_btn.place(relx = 0.12, rely = 0.3, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+        
+        self.save_bg_freq_var = tk.StringVar()
+        self.save_bg_freq_var.set('Save 10 f/update')
+        self.save_bg_freq_entry = tk.Entry(self.window, textvariable = self.save_bg_freq_var, show = None, font = ('Arial', 7))
+        self.save_bg_freq_entry.place(relx = 0.01, rely = 0.37, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+
+        self.bg_save_flg = False
+        self.bg_save_btn = tk.Button(self.window, text = 'Save BG', command = self.bg_save_fun)
+        self.bg_save_btn.place(relx = 0.12, rely = 0.37, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
 
         # Detection
         self.detection_param_var = tk.StringVar()
         self.detection_param_var.set('Parameters')
         self.detection_param_entry = tk.Entry(self.window, textvariable = self.detection_param_var, show = None, font = ('Arial', 8))
-        self.detection_param_entry.place(relx = 0.01, rely = 0.38, relheight = 0.05, relwidth = 0.21, anchor = tk.NW)
+        self.detection_param_entry.place(relx = 0.01, rely = 0.44, relheight = 0.05, relwidth = 0.21, anchor = tk.NW)
 
         self.detection_ctr_flg = False
         self.detection_ctr_btn = tk.Button(self.window, text = 'Start Detection', command = self.detection_ctr_fun)
-        self.detection_ctr_btn.place(relx = 0.01, rely = 0.43, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+        self.detection_ctr_btn.place(relx = 0.01, rely = 0.49, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
         
         self.detection_save_flg = False
         self.detection_save_btn = tk.Button(self.window, text = 'Save Detection', command = self.detection_save_fun)
-        self.detection_save_btn.place(relx = 0.12, rely = 0.43, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+        self.detection_save_btn.place(relx = 0.12, rely = 0.49, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+
+        self.save_dt_freq_var = tk.StringVar()
+        self.save_dt_freq_var.set('Save 10 f/update')
+        self.save_dt_freq_entry = tk.Entry(self.window, textvariable = self.save_dt_freq_var, show = None, font = ('Arial', 7))
+        self.save_dt_freq_entry.place(relx = 0.01, rely = 0.54, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+
+        self.save_dt_img_flg = False
+        self.save_dt_img_btn = tk.Button(self.window, text = 'Save Detect Img', command = self.detection_img_save_fun)
+        self.save_dt_img_btn.place(relx = 0.12, rely = 0.54, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
 
         # Visualization Selection
         self.VS_var = tk.IntVar()
         self.VS_var.set(1)
 
         self.VS_raw = tk.Radiobutton(self.window, text = 'Raw', variable = self.VS_var, value = 1)
-        self.VS_raw.place(relx = 0.12, rely = 0.7, relheight = 0.04, relwidth = 0.1, anchor = tk.NW)
+        self.VS_raw.place(relx = 0.12, rely = 0.6, relheight = 0.04, relwidth = 0.1, anchor = tk.NW)
 
         self.VS_undist = tk.Radiobutton(self.window, text = 'Undist', variable = self.VS_var, value = 2)
-        self.VS_undist.place(relx = 0.12, rely = 0.74, relheight = 0.04, relwidth = 0.1, anchor = tk.NW)
+        self.VS_undist.place(relx = 0.12, rely = 0.64, relheight = 0.04, relwidth = 0.1, anchor = tk.NW)
 
         self.VS_detection = tk.Radiobutton(self.window, text = 'Detection', variable = self.VS_var, value = 3)
-        self.VS_detection.place(relx = 0.12, rely = 0.78, relheight = 0.04, relwidth = 0.1, anchor = tk.NW)
+        self.VS_detection.place(relx = 0.12, rely = 0.68, relheight = 0.04, relwidth = 0.1, anchor = tk.NW)
         
         self.VS_BG = tk.Radiobutton(self.window, text = 'Dynamic BG', variable = self.VS_var, value = 4)
-        self.VS_BG.place(relx = 0.12, rely = 0.82, relheight = 0.04, relwidth = 0.1, anchor = tk.NW)
+        self.VS_BG.place(relx = 0.12, rely = 0.72, relheight = 0.04, relwidth = 0.1, anchor = tk.NW)
 
         self.VS_zone_var = tk.StringVar()
         self.VS_zone_var.set(('All', 'Zone 0', 'Zone 1', 'Zone 2', 'Zone 3', 'Zone 4', 
                               'Zone 5', 'Zone 6', 'Zone 7', 'Zone 8', 'Zone 9', 'Zone 10', 'Zone 11', 'Zone 12'))
-        self.VS_zone_listbox = tk.Listbox(self.window, listvariable = self.VS_zone_var, selectmode = 'multiple')
+        # self.VS_zone_listbox = tk.Listbox(self.window, listvariable = self.VS_zone_var, selectmode = 'multiple')
+        self.VS_zone_listbox = tk.Listbox(self.window, listvariable = self.VS_zone_var)
         self.VS_zone_listbox.select_set(0)
-        self.VS_zone_listbox.place(relx = 0.01, rely = 0.7, relheight = 0.18, relwidth = 0.1, anchor = tk.NW)
+        self.VS_zone_listbox.place(relx = 0.01, rely = 0.6, relheight = 0.18, relwidth = 0.1, anchor = tk.NW)
 
         # Communication
         self.socket_connection_flg = False
         self.socket_connection = tk.Button(self.window, text = 'Connect Server', command = self.socket_connection_fun)
-        self.socket_connection.place(relx = 0.01, rely = 0.52, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+        self.socket_connection.place(relx = 0.01, rely = 0.85, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
 
         self.socket_send_flg = False
         self.socket_send = tk.Button(self.window, text = 'Send Data', command = self.socket_send_fun)
-        self.socket_send.place(relx = 0.12, rely = 0.52, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
+        self.socket_send.place(relx = 0.12, rely = 0.85, relheight = 0.05, relwidth = 0.1, anchor = tk.NW)
 
     def streaming_ctr_fun(self):
         if self.streaming_ctr_flg:
@@ -397,14 +418,30 @@ class AppGUI():
             self.frame_receive = False
             self.streaming_ctr_flg = False
             self.streaming_ctr_btn.config(text = 'Start Streaming')
+
             self.streaming_save_flg = False
             self.streaming_save_btn.config(text = 'Save Streaming')
+
+            self.bg_maintain_flg = False
+            self.bg_maintain_btn.config(text = 'BG Maintaining')
+
+            self.bg_save_flg = False
+            self.bg_save_btn.config(text = 'Save BG')
+
             self.detection_ctr_flg = False
             self.detection_ctr_btn.config(text = 'Start Detection')
+
             self.detection_save_flg = False
             self.detection_save_btn.config(text = 'Save Detection')
+
+            self.save_dt_img_flg = False
+            self.save_dt_img_btn.config(text = 'Save Detect Img')
+
             self.address_entry.config({'background': 'white'})
             self.detection_param_entry.config({'background': 'white'})
+
+            if self.detection_file is not None: self.detection_file.close()
+
             self.window.after_cancel(self.after_id)
             self.after_id = None
             self.total_frame_cnt = 0
@@ -636,7 +673,7 @@ class AppGUI():
 
         self.current_bg = bg_final
         now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
-        cv2.imwrite('./data/background/' + now + '.png',
+        cv2.imwrite('./data/background/' + now + '_autoinit.png',
                     cv2.cvtColor(self.current_bg, cv2.COLOR_RGB2BGR))
 
         self.zone_update_time_entry.config({'background': 'green'})
@@ -760,7 +797,7 @@ class AppGUI():
         self.current_bg = cv2.add(current_bg_no_zone, bg_final)
 
         now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
-        cv2.imwrite('./data/background/' + now + '.png',
+        cv2.imwrite('./data/background/' + now + '_zoneinit.png',
                     cv2.cvtColor(self.current_bg, cv2.COLOR_RGB2BGR))
 
         self.zone_update_time_entry.config({'background': 'green'})
@@ -923,9 +960,17 @@ class AppGUI():
                                               cv2.bitwise_and(bg_buffer_2, bg_buffer_2, mask = cv2.bitwise_not(dirty_mask)))
 
                 ##### Output #####
-                # now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
-                # cv2.imwrite('./data/background/' + now + '.png',
-                #             cv2.cvtColor(bg_buffer_2, cv2.COLOR_RGB2BGR))
+                save_bg_freq = self.save_bg_freq_entry.get()
+                if save_bg_freq.isnumeric():
+                    save_bg_freq = int(save_bg_freq)
+                else:
+                    save_bg_freq = 10
+
+                if self.bg_save_flg and bg_maintain_cnt % save_bg_freq == 0:
+                    now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                    cv2.imwrite('./data/background/' + now + '.png',
+                                cv2.cvtColor(bg_buffer_2, cv2.COLOR_RGB2BGR))
+
                 self.current_bg = bg_buffer_2
                 ##### Output #####
 
@@ -940,6 +985,19 @@ class AppGUI():
                 ########## Maintain Task ##########
             else:
                 pass
+
+    def bg_save_fun(self):
+        if self.bg_save_flg:
+            print('Stop saving bg')
+            self.bg_save_flg = False
+            self.bg_save_btn.config(text = 'Save BG')
+        else:
+            if not self.bg_maintain_flg:
+                tk.messagebox.showerror('Error', 'Please start bg maintain first!')
+            else:
+                print('Save bg!')
+                self.bg_save_flg = True
+                self.bg_save_btn.config(text = 'Stop Saving bg')
 
     def detection_ctr_fun(self):
         if self.detection_ctr_flg:
@@ -1226,6 +1284,17 @@ class AppGUI():
                 if self.detection_save_flg:
                     detection_writer.writerow([current_time_sample, bbox_list_rt])
 
+                save_dt_img_freq = self.save_dt_freq_entry.get()
+                if save_dt_img_freq.isnumeric():
+                    save_dt_img_freq = int(save_dt_img_freq)
+                else:
+                    save_dt_img_freq = 10
+
+                if self.save_dt_img_flg and detection_cnt % save_dt_img_freq == 0:
+                    now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                    cv2.imwrite('./data/detection_img/' + now + '.png',
+                                cv2.cvtColor(img_contours, cv2.COLOR_RGB2BGR))
+
                 if self.socket_send_flg:
                     # [Lat, Lon, Yaw, Speed]
                     # [{time, id, lon, lat, alt, x_size, y_size, z_side, yaw, t1, t2, t3, t4, t5}, {}, ...]
@@ -1271,6 +1340,19 @@ class AppGUI():
                 print('Save detection!')
                 self.detection_save_flg = True
                 self.detection_save_btn.config(text = 'Stop Saving')
+
+    def detection_img_save_fun(self):
+        if self.save_dt_img_flg:
+            print('Stop saving')
+            self.save_dt_img_flg = False
+            self.save_dt_img_btn.config(text = 'Save Detect Img')
+        else:
+            if not self.detection_ctr_flg:
+                tk.messagebox.showerror('Error', 'Please start detection first!')
+            else:
+                print('Save detection img!')
+                self.save_dt_img_flg = True
+                self.save_dt_img_btn.config(text = 'Stop Saving')
 
     def socket_connection_fun(self):
         if self.socket_connection_flg:
