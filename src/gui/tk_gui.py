@@ -810,8 +810,8 @@ class AppGUI():
         print('Zone Initialization Done.')
 
     def bg_load(self):
-        filetype = (('JPG', '*.jpg'), ('PNG', '*.png'), )
-        current_bg_name = fd.askopenfilename(title = 'Load a background', initialdir='./data/', filetypes = filetype)
+        filetype = (('PNG', '*.png'), ('JPG', '*.jpg'), )
+        current_bg_name = fd.askopenfilename(title = 'Load a background', initialdir='./data/background/', filetypes = filetype)
         self.current_bg = cv2.cvtColor(cv2.imread(current_bg_name), cv2.COLOR_BGR2RGB)
         print('Load:')
         print(current_bg_name)
@@ -1034,10 +1034,11 @@ class AppGUI():
         width = 960
         height = 960
         now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
-        self.detection_file = open('./data/results/detection_'+now + '.csv', 'w')
+        self.detection_file = open('./data/results/detection_'+ now + '.csv', 'w')
         detection_writer = csv.writer(self.detection_file)
-        detection_writer.writerow(['Time', 'Detection (Lat, Lon, Yaw, Speed)'])
+        detection_writer.writerow(['Time (Receive)', 'Time (Detected)', 'Detection'])
         of_resize = 4
+
         while self.detection_ctr_flg:
             if self.update_frame_cnt > update_frame_cnt_last:
                 detection_cnt += 1
@@ -1053,6 +1054,7 @@ class AppGUI():
                 current_undist_sample = current_undist_sample[:, 160 : -160]
                 current_undist_sample = cv2.bitwise_and(current_undist_sample, current_undist_sample, mask = mask_all)
                 current_time_sample = time.time()
+                current_detection_mask = np.zeros((960, 960), np.uint8)
 
                 current_bg_sample = self.current_bg.copy()
                 # img_showof = self.current_bg.copy()
@@ -1216,12 +1218,13 @@ class AppGUI():
 
                                     ###### Draw Bbox ######
                                     cv2.drawContours(img_contours, [min_box_points], -1, (0, 255, 0), 3) # Min bbox
+                                    cv2.fillConvexPoly(current_detection_mask, min_box_points, (255, ))
                                     cv2.circle(img_contours, (center_x, center_y), 5, (255, 0, 0), -1)
                                     _, center_flag = divide_orientation([center_x, center_y]) # if the vehicles are within center area, display the angles
-                                    if not center_flag:
-                                        text = ['***' + str(cntr_cnt)+', '+str(round(min_rect[-1],2))+', '+str(round(ang_mean_raw,2))]
-                                        cv2.putText(img_contours, text[0], (sub_x + x, sub_y + y), cv2.FONT_HERSHEY_PLAIN, 1.6, (0, 0, 255), 2)
-
+                                    
+                                    # if not center_flag:
+                                    #     text = ['***' + str(cntr_cnt)+', '+str(round(min_rect[-1],2))+', '+str(round(ang_mean_raw,2))]
+                                    #     cv2.putText(img_contours, text[0], (sub_x + x, sub_y + y), cv2.FONT_HERSHEY_PLAIN, 1.6, (0, 0, 255), 2)
 
                                     bbox_list_ori.append([new_x, new_y, sub_w, sub_h])
                                     lat, lon = find_Lat_Lon(center_x, center_y)
@@ -1247,7 +1250,7 @@ class AppGUI():
                             center_y = y + int(h/2)
                             _, cal_angle = divide_orientation([center_x, center_y])
                             if not cal_angle:
-                                cv2.imwrite('./data/ang/'+str(detection_cnt)+'_'+str(cntr_cnt)+'.png',ang_mean_img)
+                                # cv2.imwrite('./data/ang/'+str(detection_cnt)+'_'+str(cntr_cnt)+'.png',ang_mean_img)
                                 # cal_angle = ang_mean_raw
                                 if min_rect[1][0] > np.min(min_rect[1]):
                                     cal_angle = min_rect[-1]
@@ -1299,11 +1302,13 @@ class AppGUI():
 
                             ###### Draw Bbox ######
                             cv2.drawContours(img_contours, [min_box_points], -1, (0, 255, 0), 3) # Min bbox
+                            cv2.fillConvexPoly(current_detection_mask, min_box_points, (255, ))
                             cv2.circle(img_contours, (center_x, center_y), 5, (255, 0, 0), -1) # Position
                             _, center_flag = divide_orientation([center_x, center_y]) # if the vehicles are within center area, display the angles
-                            if not center_flag:
-                                text = [str(mov_flag)+', '+str(round(min_rect[-1],2))+', '+str(round(cal_angle,2)) ] # +str(bbox_list_last[nearest_point_id,1]-center_y)+','+str(bbox_list_last[nearest_point_id,0]-center_x)
-                                cv2.putText(img_contours, text[0], (x, y), cv2.FONT_HERSHEY_PLAIN, 1.8, (255, 0, 0), 2)
+                            
+                            # if not center_flag:
+                            #     text = [str(mov_flag)+', '+str(round(min_rect[-1],2))+', '+str(round(cal_angle,2)) ] # +str(bbox_list_last[nearest_point_id,1]-center_y)+','+str(bbox_list_last[nearest_point_id,0]-center_x)
+                            #     cv2.putText(img_contours, text[0], (x, y), cv2.FONT_HERSHEY_PLAIN, 1.8, (255, 0, 0), 2)
 
                             bbox_list_ori.append([x, y, w, h])
                             lat, lon = find_Lat_Lon(center_x, center_y)
@@ -1311,15 +1316,21 @@ class AppGUI():
                             distance = np.power(480-center_x,2) + np.power(480-center_y,2)
                             bbox_list.append([center_x, center_y, min_rect[1][0], min_rect[1][1], mag_mean, min_rect[-1],distance])
                             cntr_cnt += 1
-                bbox_list = np.array(bbox_list)
+                
+                current_time_finish = time.time()
+                
                 # sort the bound_box according to the distance to center
+                bbox_list = np.array(bbox_list)
                 bbox_index = np.argsort(bbox_list[:,-1])
                 bbox_list = bbox_list[bbox_index]
-                
                 bbox_list_last = bbox_list.copy()
 
+                bbox_list_rt = np.array(bbox_list_rt)
+                bbox_list_rt = bbox_list_rt[bbox_index]
+                bbox_list_rt_last = bbox_list_rt.copy()
+
                 if self.detection_save_flg:
-                    detection_writer.writerow([current_time_sample, bbox_list_rt])
+                    detection_writer.writerow([current_time_sample, current_time_finish, bbox_list_last])
 
                 save_dt_img_freq = self.save_dt_freq_entry.get()
                 if save_dt_img_freq.isnumeric():
@@ -1329,14 +1340,19 @@ class AppGUI():
 
                 if self.save_dt_img_flg and detection_cnt % save_dt_img_freq == 0:
                     now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
-                    cv2.imwrite('./data/detection_img/' + now + '.png',
-                                cv2.cvtColor(img_contours, cv2.COLOR_RGB2BGR))
-
+                    # cv2.imwrite('./data/detection_bbox/' + now + '.png',
+                    #             cv2.cvtColor(img_contours, cv2.COLOR_RGB2BGR))
+                    current_detection_objects = cv2.bitwise_and(current_undist_sample.copy(), 
+                                                                current_undist_sample.copy(), 
+                                                                mask = current_detection_mask)
+                    cv2.imwrite('./data/detection_objects/' + now + '.png',
+                                cv2.cvtColor(current_detection_objects, cv2.COLOR_RGB2BGR))
+                
                 if self.socket_send_flg:
                     # [Lat, Lon, Yaw, Speed]
                     # [{time, id, lon, lat, alt, x_size, y_size, z_side, yaw, t1, t2, t3, t4, t5}, {}, ...]
                     dict_data = []
-                    for id, cur_sample_data in enumerate(bbox_list_rt):
+                    for id, cur_sample_data in enumerate(bbox_list_rt_last):
                         current_sample_dict = dict()
                         current_sample_dict['time'] = current_time_sample
                         current_sample_dict['id'] = id
