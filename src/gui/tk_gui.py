@@ -640,8 +640,7 @@ class AppGUI():
                 for idx in range(number_of_zone):
                     trigger_shared_memory[idx] = of_trigger.is_zone_triggered(idx)
 
-                print('Trigger: ', trigger_shared_memory)
-
+                # print('Trigger: ', trigger_shared_memory)
 
             of_event.set()
 
@@ -674,6 +673,7 @@ class AppGUI():
         trigger_shared_memory.shm.unlink()
 
         self.current_bg = bg_final
+
         now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
         cv2.imwrite('./data/background/' + now + '_autoinit.png',
                     cv2.cvtColor(self.current_bg, cv2.COLOR_RGB2BGR))
@@ -706,18 +706,18 @@ class AppGUI():
             self.zone_id_entry.config({'background': 'red'})
             self.zone_update_time_entry.config({'background': 'red'})
 
-    def manual_init_main_thread(self, running_time, zone_id):
+    def manual_init_main_thread(self, running_time, zone_ids):
         print('Manual Init Main Thread Started...')
         start_time = time.time()
 
-        number_of_zone = 13
+        number_of_zone = len(zone_ids)
         frame_idx = 0
 
         ##### Shared Memory #####
         cur_frame_shared_memory = shared_memory.SharedMemory(create = True, size = 960 * 960 * 3)
         cur_frame_buffer = np.ndarray((960, 960, 3), dtype = 'uint8', buffer = cur_frame_shared_memory.buf)
 
-        trigger_shared_memory = shared_memory.ShareableList([True for _ in range(number_of_zone)])
+        trigger_shared_memory = shared_memory.ShareableList([True for _ in range(13)])
         
         ##### BG Queue #####
         manager = Manager()
@@ -725,15 +725,16 @@ class AppGUI():
 
         ##### Events #####
         of_event = Event()
-        zone_init_event = Event()
+        zone_init_events = [Event() for _ in range(number_of_zone)]
         shutdown_event = Event()
 
         ##### Start Multi-process #####
         bg_init_process_list = [Process(target = zone_initializing_process, 
                                         args = (cur_frame_buffer, trigger_shared_memory,
                                                 self.init_mode_of_var.get(), self.init_mode_var_var.get(), self.init_mode_sift_var.get(),
-                                                old_bg_img, mask_tuple, zone_id, 
-                                                of_event, zone_init_event, shutdown_event, bg_queue)),]
+                                                old_bg_img, mask_tuple, zone_id[1], 
+                                                of_event, zone_init_events[zone_id[0]], shutdown_event, bg_queue))
+                                for zone_id in enumerate(zone_ids)]
 
         for p in bg_init_process_list:
             p.start()
@@ -761,27 +762,40 @@ class AppGUI():
             ########## Use OF or not ############
             if self.init_mode_of_var.get():
                 of_trigger.update(cur_frame)
-                trigger_shared_memory[zone_id] = of_trigger.is_zone_triggered(zone_id)
+
+                for zone_id in zone_ids:
+                    trigger_shared_memory[zone_id] = of_trigger.is_zone_triggered(zone_id)
 
                 # print('Main Trigger:', trigger_shared_memory)
 
-            # print('OpticalFlow: finished!!!!!!!')
             of_event.set()
 
-            # print('Main: Wait for ZoneInit')
-            zone_init_event.clear()
-            zone_init_event.wait()
+            for zone_init_event in zone_init_events:
+                zone_init_event.clear()
+
+            for zone_init_event in zone_init_events:
+                zone_init_event.wait()
 
         for p in bg_init_process_list:
             p.join()
 
-        bg_result_list = [bg_queue.get(),]
+        bg_result_list = [bg_queue.get() for _ in range(number_of_zone)]
         bg_final = np.zeros((960,960,3), dtype = 'uint8')
-        zero_img = np.zeros((960,960,3), dtype = 'uint8')
-        zero_img[crop_position[bg_result_list[0][1]][0] : crop_position[bg_result_list[0][1]][0] + 480,
-                 crop_position[bg_result_list[0][1]][1] : crop_position[bg_result_list[0][1]][1] + 480] = bg_result_list[0][0]
-        bg_final = cv2.add(bg_final, zero_img)
-        del zero_img
+        for i in range(number_of_zone):
+            zero_img = np.zeros((960,960,3), dtype = 'uint8')
+
+            zero_img[crop_position[bg_result_list[i][1]][0] : crop_position[bg_result_list[i][1]][0] + 480,
+                     crop_position[bg_result_list[i][1]][1] : crop_position[bg_result_list[i][1]][1] + 480] = bg_result_list[i][0]
+            bg_final = cv2.add(bg_final, zero_img)
+            del zero_img
+
+        # bg_result_list = [bg_queue.get(),]
+        # bg_final = np.zeros((960,960,3), dtype = 'uint8')
+        # zero_img = np.zeros((960,960,3), dtype = 'uint8')
+        # zero_img[crop_position[bg_result_list[0][1]][0] : crop_position[bg_result_list[0][1]][0] + 480,
+        #          crop_position[bg_result_list[0][1]][1] : crop_position[bg_result_list[0][1]][1] + 480] = bg_result_list[0][0]
+        # bg_final = cv2.add(bg_final, zero_img)
+        # del zero_img
 
         end_time = time.time()
 
@@ -793,10 +807,21 @@ class AppGUI():
         trigger_shared_memory.shm.close()
         trigger_shared_memory.shm.unlink()
 
-        current_bg_no_zone = cv2.bitwise_and(self.current_bg.copy(), 
-                                             self.current_bg.copy(), 
-                                             mask = cv2.bitwise_not(mask_tuple[zone_id]))
-        self.current_bg = cv2.add(current_bg_no_zone, bg_final)
+        current_bg_no_zone_mask = np.zeros((960,960), dtype = 'uint8')
+        for zone_id in range(13):
+            if zone_id in zone_ids:
+                continue
+            else:
+                current_bg_no_zone_mask = cv2.add(current_bg_no_zone_mask, mask_tuple[zone_id])
+        current_bg_no_zone =cv2.bitwise_and(self.current_bg.copy(), 
+                                            self.current_bg.copy(), 
+                                            mask = current_bg_no_zone_mask)
+        # current_bg_no_zone = cv2.bitwise_and(self.current_bg.copy(), 
+        #                                      self.current_bg.copy(), 
+        #                                      mask = cv2.bitwise_not(mask_tuple[zone_id]))
+        # self.current_bg = cv2.add(current_bg_no_zone, bg_final)
+        # self.current_bg = bg_final
+        self.current_bg = current_bg_no_zone
 
         now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
         cv2.imwrite('./data/background/' + now + '_zoneinit.png',
