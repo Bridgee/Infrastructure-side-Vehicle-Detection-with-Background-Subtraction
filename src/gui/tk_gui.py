@@ -789,14 +789,6 @@ class AppGUI():
             bg_final = cv2.add(bg_final, zero_img)
             del zero_img
 
-        # bg_result_list = [bg_queue.get(),]
-        # bg_final = np.zeros((960,960,3), dtype = 'uint8')
-        # zero_img = np.zeros((960,960,3), dtype = 'uint8')
-        # zero_img[crop_position[bg_result_list[0][1]][0] : crop_position[bg_result_list[0][1]][0] + 480,
-        #          crop_position[bg_result_list[0][1]][1] : crop_position[bg_result_list[0][1]][1] + 480] = bg_result_list[0][0]
-        # bg_final = cv2.add(bg_final, zero_img)
-        # del zero_img
-
         end_time = time.time()
 
         print('##### Sec/Frame:', (end_time - start_time) / frame_idx, '#####')
@@ -816,12 +808,7 @@ class AppGUI():
         current_bg_no_zone =cv2.bitwise_and(self.current_bg.copy(), 
                                             self.current_bg.copy(), 
                                             mask = current_bg_no_zone_mask)
-        # current_bg_no_zone = cv2.bitwise_and(self.current_bg.copy(), 
-        #                                      self.current_bg.copy(), 
-        #                                      mask = cv2.bitwise_not(mask_tuple[zone_id]))
-        # self.current_bg = cv2.add(current_bg_no_zone, bg_final)
-        # self.current_bg = bg_final
-        self.current_bg = current_bg_no_zone
+        self.current_bg = cv2.add(current_bg_no_zone, bg_final)
 
         now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
         cv2.imwrite('./data/background/' + now + '_zoneinit.png',
@@ -1504,6 +1491,7 @@ class AppGUI():
                 self.tmp_img = self.cv2tk(self.tmp_img)
                 self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
                 self.zone_id_entry.delete(0, tk.END)
+                cur_VS_zones = tuple([i - 1 for i in cur_VS_zones])
                 self.zone_id_entry.insert(0, str(cur_VS_zones))
 
         self.after_id = self.window.after(self.gui_update_time, self.canvas_update)
