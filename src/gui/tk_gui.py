@@ -693,11 +693,11 @@ class AppGUI():
             else:
                 running_time = 10
 
-            zone_id = self.zone_id_entry.get()
-            if zone_id.isnumeric() and int(zone_id) < 13:
-                zone_id = int(zone_id)
+            zone_id_text = self.zone_id_entry.get()
+            if zone_id_text[0] == '(' and zone_id_text[-1] == ')':
+                zone_id = tuple(map(int, zone_id_text[1:-1].split(', ')))
             else:
-                zone_id = 0
+                zone_id = (0, )
 
             print('Zone', zone_id, 'Init', running_time, 'sec...')
 
@@ -1467,7 +1467,8 @@ class AppGUI():
             if cur_VS_zones[0] == 0:
                 self.tmp_img = self.cv2tk(self.current_bg.copy())
                 self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
-                # self.zone_id_entry.config(textvariable='all')
+                self.zone_id_entry.delete(0, tk.END)
+                self.zone_id_entry.insert(0, 'all')
             else:
                 self.tmp_img = np.zeros((960, 960, 3), dtype = 'uint8')
                 for cur_VS_zone in cur_VS_zones:                                        
@@ -1477,7 +1478,8 @@ class AppGUI():
                                                         mask = mask_tuple[cur_VS_zone - 1]))
                 self.tmp_img = self.cv2tk(self.tmp_img)
                 self.canvas.create_image(0, 0, image = self.tmp_img, anchor = tk.NW)
-                # self.zone_id_entry.setvar(str(cur_VS_zones))
+                self.zone_id_entry.delete(0, tk.END)
+                self.zone_id_entry.insert(0, str(cur_VS_zones))
 
         self.after_id = self.window.after(self.gui_update_time, self.canvas_update)
 
