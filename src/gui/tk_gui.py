@@ -526,7 +526,7 @@ class AppGUI():
 
                         # Save Raw and Undist
                         if self.streaming_save_flg:
-                            now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                            now = datetime.utcnow().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
                             cv2.imwrite('./data/raw/' + now + '.png',
                                         cv2.cvtColor(self.current_raw, cv2.COLOR_RGB2BGR))
                             cv2.imwrite('./data/undist/' + now + '.png',
@@ -546,7 +546,7 @@ class AppGUI():
 
                         # Save Raw and Undist
                         if self.streaming_save_flg:
-                            now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                            now = datetime.utcnow().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
                             cv2.imwrite('./data/raw/' + now + '.png',
                                         cv2.cvtColor(self.current_raw, cv2.COLOR_RGB2BGR))
                             cv2.imwrite('./data/undist/' + now + '.png',
@@ -674,7 +674,7 @@ class AppGUI():
 
         self.current_bg = bg_final
 
-        now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+        now = datetime.utcnow().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
         cv2.imwrite('./data/background/' + now + '_autoinit.png',
                     cv2.cvtColor(self.current_bg, cv2.COLOR_RGB2BGR))
 
@@ -810,7 +810,7 @@ class AppGUI():
                                             mask = current_bg_no_zone_mask)
         self.current_bg = cv2.add(current_bg_no_zone, bg_final)
 
-        now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+        now = datetime.utcnow().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
         cv2.imwrite('./data/background/' + now + '_zoneinit.png',
                     cv2.cvtColor(self.current_bg, cv2.COLOR_RGB2BGR))
 
@@ -879,7 +879,7 @@ class AppGUI():
                 current_undist_sample = cv2.bitwise_and(current_undist_sample, current_undist_sample, mask = mask_all)
                 img_diff = cv2.absdiff(bg_buffer_2, current_undist_sample)
 
-                # now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                # now = datetime.utcnow().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
                 # cv2.imwrite('./debug/' + now + '.png',
                 #             cv2.cvtColor(img_diff, cv2.COLOR_RGB2BGR))
 
@@ -905,13 +905,13 @@ class AppGUI():
                 img_bg_mask = cv2.bitwise_not(img_bg_opened)
                 frame_bg = cv2.bitwise_and(mask_all, img_bg_mask)
 
-                # now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                # now = datetime.utcnow().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
                 # cv2.imwrite('./debug/' + now + '.png',
                 #             cv2.cvtColor(frame_bg, cv2.COLOR_RGB2BGR))
 
                 current_frame_renew = cv2.bitwise_and(current_undist_sample, current_undist_sample, mask = frame_bg)
 
-                # now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                # now = datetime.utcnow().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
                 # cv2.imwrite('./debug/' + now + '.png',
                 #             cv2.cvtColor(current_frame_renew, cv2.COLOR_RGB2BGR))
 
@@ -921,7 +921,7 @@ class AppGUI():
                                            (1 - ratio), 
                                            0)
 
-                # now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                # now = datetime.utcnow().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
                 # cv2.imwrite('./debug/' + now + '.png',
                 #             cv2.cvtColor(bg_renew, cv2.COLOR_RGB2BGR))
 
@@ -981,7 +981,7 @@ class AppGUI():
                     save_bg_freq = 10
 
                 if self.bg_save_flg and bg_maintain_cnt % save_bg_freq == 0:
-                    now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                    now = datetime.utcnow().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
                     cv2.imwrite('./data/background/' + now + '.png',
                                 cv2.cvtColor(bg_buffer_2, cv2.COLOR_RGB2BGR))
 
@@ -1045,7 +1045,7 @@ class AppGUI():
         init_flag = True
         width = 960
         height = 960
-        now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+        now = datetime.utcnow().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
         self.detection_file = open('./data/results/detection_'+ now + '.csv', 'w')
         detection_writer = csv.writer(self.detection_file)
         detection_writer.writerow(['Time (Receive)', 'Time (Detected)', 'Detection'])
@@ -1351,7 +1351,7 @@ class AppGUI():
                     save_dt_img_freq = 10
 
                 if self.save_dt_img_flg and detection_cnt % save_dt_img_freq == 0:
-                    now = datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S.%f')[:-3]
+                    now = datetime.utcnow().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
                     # cv2.imwrite('./data/detection_bbox/' + now + '.png',
                     #             cv2.cvtColor(img_contours, cv2.COLOR_RGB2BGR))
                     current_detection_objects = cv2.bitwise_and(current_undist_sample.copy(), 
