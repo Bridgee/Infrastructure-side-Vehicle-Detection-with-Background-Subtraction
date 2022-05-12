@@ -219,8 +219,8 @@ def find_Lat_Lon(y, x):
     return lat, lon # west semisphere
 
 ######### GUI Canvas parameters #########
-scale_x = 0.7
-scale_y = 0.7
+scale_x = 0.6
+scale_y = 0.6
 
 ######### Communication parameters #########
 C_HOST = '169.235.21.87' # ce-cert server
