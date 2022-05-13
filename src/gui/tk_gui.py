@@ -267,6 +267,7 @@ class AppGUI():
 
         # BG Parameters
         self.current_bg = cv2.cvtColor(cv2.imread('./data/background/bg_default.png'), cv2.COLOR_BGR2RGB)
+        self.current_mirror = self.current_bg.copy()
         self.detection_file = None
         
         ############################# GUI #############################
@@ -694,6 +695,8 @@ class AppGUI():
         trigger_shared_memory.shm.unlink()
 
         self.current_bg = bg_final
+        if not self.detection_ctr_flg:
+            self.current_mirror = self.current_bg.copy()
 
         now = datetime.now().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
         cv2.imwrite('./data/background/' + now + '_autoinit.png',
@@ -829,7 +832,10 @@ class AppGUI():
         current_bg_no_zone =cv2.bitwise_and(self.current_bg.copy(), 
                                             self.current_bg.copy(), 
                                             mask = current_bg_no_zone_mask)
+        
         self.current_bg = cv2.add(current_bg_no_zone, bg_final)
+        if not self.detection_ctr_flg:
+            self.current_mirror = self.current_bg.copy()
 
         now = datetime.now().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
         cv2.imwrite('./data/background/' + now + '_zoneinit.png',
@@ -891,7 +897,7 @@ class AppGUI():
             # if frame update
             if self.update_frame_cnt > update_frame_cnt_last:
                 bg_maintain_cnt += 1
-                print('Maintaining frame:', self.update_frame_cnt, bg_maintain_cnt)
+                # print('Maintaining frame:', self.update_frame_cnt, bg_maintain_cnt)
                 update_frame_cnt_last = self.update_frame_cnt
 
                 ########## Maintain Task ##########
@@ -1007,6 +1013,8 @@ class AppGUI():
                                 cv2.cvtColor(bg_buffer_2, cv2.COLOR_RGB2BGR))
 
                 self.current_bg = bg_buffer_2
+                if not self.detection_ctr_flg:
+                    self.current_mirror = self.current_bg.copy()
                 ##### Output #####
 
                 if bg_maintain_cnt % 50 == 0:
@@ -1073,7 +1081,7 @@ class AppGUI():
         while self.detection_ctr_flg:
             if self.update_frame_cnt > update_frame_cnt_last:
                 detection_cnt += 1
-                print('detecting frame:', self.update_frame_cnt, detection_cnt)
+                # print('detecting frame:', self.update_frame_cnt, detection_cnt)
                 update_frame_cnt_last = self.update_frame_cnt
                 
                 ########## Detection Task ##########
@@ -1167,6 +1175,7 @@ class AppGUI():
                 contours, _ = cv2.findContours(img_opened, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
                 img_contours = current_undist_sample.copy()
+                img_contours_mirror = current_bg_sample.copy()
 
                 cntr_cnt = 0
                 
@@ -1251,6 +1260,7 @@ class AppGUI():
                                     cv2.drawContours(img_contours, [min_box_points], -1, (0, 255, 0), 3) # Min bbox
                                     cv2.fillConvexPoly(current_detection_mask, min_box_points, (255, ))
                                     cv2.circle(img_contours, (center_x, center_y), 5, (255, 0, 0), -1)
+                                    cv2.circle(img_contours_mirror, (center_x, center_y), 5, (255, 0, 0), -1)
                                     _, center_flag = divide_orientation([center_x, center_y]) # if the vehicles are within center area, display the angles
                                     
                                     # if not center_flag:
@@ -1335,6 +1345,7 @@ class AppGUI():
                             cv2.drawContours(img_contours, [min_box_points], -1, (0, 255, 0), 3) # Min bbox
                             cv2.fillConvexPoly(current_detection_mask, min_box_points, (255, ))
                             cv2.circle(img_contours, (center_x, center_y), 5, (255, 0, 0), -1) # Position
+                            cv2.circle(img_contours_mirror, (center_x, center_y), 5, (255, 0, 0), -1)
                             _, center_flag = divide_orientation([center_x, center_y]) # if the vehicles are within center area, display the angles
                             
                             # if not center_flag:
@@ -1407,6 +1418,7 @@ class AppGUI():
                     self.sock_edge.sendall(msg.encode('utf-8'))
                     
                 self.current_detection = img_contours.copy()
+                self.current_mirror = img_contours_mirror.copy()
                 del ang
                 ########## Detection Task ##########
             else:
@@ -1514,7 +1526,7 @@ class AppGUI():
                 self.zone_id_entry.insert(0, str(cur_VS_zones))
 
         # Mirror
-        self.mirror_tmp_img = self.cv2tk(self.current_bg.copy())
+        self.mirror_tmp_img = self.cv2tk(self.current_mirror.copy())
         self.mirror_canvas.create_image(0, 0, image = self.mirror_tmp_img, anchor = tk.NW)
 
         self.after_id = self.window.after(self.gui_update_time, self.canvas_update)
