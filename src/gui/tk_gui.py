@@ -1324,7 +1324,7 @@ class AppGUI():
 
                             bbox_list_ori.append([x, y, w, h])
                             lat, lon = find_Lat_Lon(center_x, center_y)
-                            bbox_list_rt.append([round(lat,6), round(lon,6), cal_angle, mag_mean]) # Lat, Lon, Yaw, Speed
+                            bbox_list_rt.append([round(lat,6), round(lon,6), np.deg2rad(ang_mean-213.69)*100-41, mag_mean]) # Lat, Lon, Yaw, Speed
                             distance = np.power(480-center_x,2) + np.power(480-center_y,2)
                             bbox_list.append([center_x, center_y, min_rect[1][0], min_rect[1][1], mag_mean, min_rect[-1],distance])
                             cntr_cnt += 1
@@ -1373,7 +1373,7 @@ class AppGUI():
                         current_sample_dict['alt'] = 0
                         current_sample_dict['x_size'] = 120
                         current_sample_dict['y_size'] = 120
-                        current_sample_dict['z_side'] = 0
+                        current_sample_dict['z_size'] = 0
                         current_sample_dict['yaw'] = cur_sample_data[2]
                         current_sample_dict['t1'] = 0
                         current_sample_dict['t2'] = 0
