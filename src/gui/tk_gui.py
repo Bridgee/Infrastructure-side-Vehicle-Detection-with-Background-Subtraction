@@ -1382,8 +1382,8 @@ class AppGUI():
 
                 if self.save_dt_img_flg and detection_cnt % save_dt_img_freq == 0:
                     now = datetime.now().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
-                    # cv2.imwrite('./data/detection_bbox/' + now + '.png',
-                    #             cv2.cvtColor(img_contours, cv2.COLOR_RGB2BGR))
+                    cv2.imwrite('./data/detection_bbox/' + now + '.png',
+                                cv2.cvtColor(img_contours, cv2.COLOR_RGB2BGR))
                     current_detection_objects = cv2.bitwise_and(current_undist_sample.copy(), 
                                                                 current_undist_sample.copy(), 
                                                                 mask = current_detection_mask)
