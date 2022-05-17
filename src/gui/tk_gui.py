@@ -267,7 +267,8 @@ class AppGUI():
 
         # BG Parameters
         self.current_bg = cv2.cvtColor(cv2.imread('./data/background/bg_default.png'), cv2.COLOR_BGR2RGB)
-        self.current_mirror = self.current_bg.copy()
+        self.mirror_map = cv2.cvtColor(cv2.imread('./data/mirror_map.png'), cv2.COLOR_BGR2RGB)
+        self.current_mirror = self.mirror_map.copy()
         self.detection_file = None
         
         ############################# GUI #############################
@@ -696,7 +697,7 @@ class AppGUI():
 
         self.current_bg = bg_final
         if not self.detection_ctr_flg:
-            self.current_mirror = self.current_bg.copy()
+            self.current_mirror = self.mirror_map.copy()
 
         now = datetime.now().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
         cv2.imwrite('./data/background/' + now + '_autoinit.png',
@@ -835,7 +836,7 @@ class AppGUI():
         
         self.current_bg = cv2.add(current_bg_no_zone, bg_final)
         if not self.detection_ctr_flg:
-            self.current_mirror = self.current_bg.copy()
+            self.current_mirror = self.mirror_map.copy()
 
         now = datetime.now().strftime('%Y-%m-%d_%H_%M_%S.%f')[:-3]
         cv2.imwrite('./data/background/' + now + '_zoneinit.png',
@@ -1014,7 +1015,7 @@ class AppGUI():
 
                 self.current_bg = bg_buffer_2
                 if not self.detection_ctr_flg:
-                    self.current_mirror = self.current_bg.copy()
+                    self.current_mirror = self.mirror_map.copy()
                 ##### Output #####
 
                 if bg_maintain_cnt % 50 == 0:
@@ -1175,7 +1176,7 @@ class AppGUI():
                 contours, _ = cv2.findContours(img_opened, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
                 img_contours = current_undist_sample.copy()
-                img_contours_mirror = current_bg_sample.copy()
+                img_contours_mirror = self.mirror_map.copy()
 
                 cntr_cnt = 0
                 
@@ -1260,7 +1261,7 @@ class AppGUI():
                                     cv2.drawContours(img_contours, [min_box_points], -1, (0, 255, 0), 3) # Min bbox
                                     cv2.fillConvexPoly(current_detection_mask, min_box_points, (255, ))
                                     cv2.circle(img_contours, (center_x, center_y), 5, (255, 0, 0), -1)
-                                    cv2.circle(img_contours_mirror, (center_x, center_y), 5, (255, 0, 0), -1)
+                                    cv2.circle(img_contours_mirror, (center_x, center_y), 5, (0, 255, 0), -1)
                                     _, center_flag = divide_orientation([center_x, center_y]) # if the vehicles are within center area, display the angles
                                     
                                     # if not center_flag:
@@ -1345,7 +1346,7 @@ class AppGUI():
                             cv2.drawContours(img_contours, [min_box_points], -1, (0, 255, 0), 3) # Min bbox
                             cv2.fillConvexPoly(current_detection_mask, min_box_points, (255, ))
                             cv2.circle(img_contours, (center_x, center_y), 5, (255, 0, 0), -1) # Position
-                            cv2.circle(img_contours_mirror, (center_x, center_y), 5, (255, 0, 0), -1)
+                            cv2.circle(img_contours_mirror, (center_x, center_y), 5, (0, 255, 0), -1)
                             _, center_flag = divide_orientation([center_x, center_y]) # if the vehicles are within center area, display the angles
                             
                             # if not center_flag:
